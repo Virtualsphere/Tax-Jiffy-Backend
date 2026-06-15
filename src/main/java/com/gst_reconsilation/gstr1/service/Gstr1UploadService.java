@@ -109,7 +109,7 @@ public class Gstr1UploadService {
 
         // 6. Parse all sheets
         ExcelParserService.ParseResult parsed;
-        try (var is = file.getInputStream()) {
+        try (var is = Files.newInputStream(Paths.get(savedPath))) {
             parsed = excelParserService.parse(is, filing);
         }
 

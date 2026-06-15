@@ -42,4 +42,4 @@ gstr1:
 
 app:
   excel:
-    upload-dir: C:/gst-reconsilation/uploads/excel
+    upload-dir: C:\uploads\excel
