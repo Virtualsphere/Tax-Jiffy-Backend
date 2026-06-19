@@ -30,6 +30,9 @@ public class CompanyProfile {
     @Builder.Default
     private LocalDate createdDate = LocalDate.now();
 
+    @Column(name = "owner_user_id")
+    private Integer ownerUserId;
+
     @Column(name = "created_by")
     private Integer createdBy;
 

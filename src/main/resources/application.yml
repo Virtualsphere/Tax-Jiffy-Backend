@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/gst_reconciliation_system
     username: root
-    password: 123456
+    password: Taxjiffy@1234
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   servlet:
@@ -42,4 +42,4 @@ gstr1:
 
 app:
   excel:
-    upload-dir: C:\uploads\excel
+    upload-dir: /home/aditya/uploads/excel

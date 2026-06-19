@@ -8,4 +8,5 @@ import java.util.List;
 @Repository
 public interface CompanyProfileRepository extends JpaRepository<CompanyProfile, Integer> {
     List<CompanyProfile> findByIsActiveTrue();
+    List<CompanyProfile> findByOwnerUserIdAndIsActiveTrue(Integer ownerUserId);
 }

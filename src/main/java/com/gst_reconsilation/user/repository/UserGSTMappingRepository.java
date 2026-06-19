@@ -11,4 +11,5 @@ public interface UserGSTMappingRepository extends JpaRepository<UserGSTMapping, 
     List<UserGSTMapping> findByUser_IdAndIsActiveTrue(Integer userId);
     List<UserGSTMapping> findByCompanyGST_IdAndIsActiveTrue(Integer companyGstId);
     Optional<UserGSTMapping> findByUser_IdAndCompanyGST_IdAndIsActiveTrue(Integer userId, Integer companyGstId);
+    List<UserGSTMapping> findByUser_IdAndIsActiveTrueAndIsAdminTrue(Integer userId);
 }

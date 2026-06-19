@@ -1,11 +1,14 @@
 package com.gst_reconsilation.user.service;
 
+import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.user.dto.UserRequest;
 import com.gst_reconsilation.user.dto.UserResponse;
 import com.gst_reconsilation.company.entity.CompanyProfile;
 import com.gst_reconsilation.user.entity.UserDetails;
 import com.gst_reconsilation.company.repository.CompanyProfileRepository;
 import com.gst_reconsilation.user.repository.UserDetailsRepository;
+import com.gst_reconsilation.user.repository.UserGSTMappingRepository;
+import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -20,10 +23,23 @@ public class UserService {
     private final UserDetailsRepository userRepository;
     private final CompanyProfileRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserGSTMappingRepository userGSTMappingRepository;
+    private final CompanyGSTRepository companyGSTRepository;
 
     public UserResponse create(UserRequest req, Integer createdBy) {
+        assertCallerIsAdminOfCompany(createdBy, req.getCompanyId());
         if (userRepository.existsByUserEmail(req.getUserEmail())) {
             throw new RuntimeException("Email already registered: " + req.getUserEmail());
+        }
+        CompanyGST activeGst = companyGSTRepository
+                .findFirstByCompany_IdAndIsActiveTrueAndIsPaymentDoneTrue(req.getCompanyId())
+                .orElseThrow(() -> new RuntimeException("No active subscription for this company"));
+
+        long currentCount = userRepository.countByCompany_IdAndIsActiveTrue(req.getCompanyId());
+        int allowedCount = activeGst.getSubscriptionPlan().getUserCount();
+        if (currentCount >= allowedCount) {
+            throw new RuntimeException(
+                    "User limit reached (" + allowedCount + " users allowed by your plan)");
         }
         CompanyProfile company = null;
         if (req.getCompanyId() != null) {
@@ -36,6 +52,18 @@ public class UserService {
                 .userEmail(req.getUserEmail())
                 .userPassword(passwordEncoder.encode(req.getUserPassword()))
                 .createdBy(createdBy)
+                .build();
+        return toResponse(userRepository.save(user));
+    }
+
+    public UserResponse register(UserRequest req) {
+        if (userRepository.existsByUserEmail(req.getUserEmail())) {
+            throw new RuntimeException("Email already registered: " + req.getUserEmail());
+        }
+        UserDetails user = UserDetails.builder()
+                .userName(req.getUserName())
+                .userEmail(req.getUserEmail())
+                .userPassword(passwordEncoder.encode(req.getUserPassword()))
                 .build();
         return toResponse(userRepository.save(user));
     }
@@ -85,5 +113,23 @@ public class UserService {
             r.setCompanyName(u.getCompany().getCompanyName());
         }
         return r;
+    }
+
+    private void assertCallerIsAdminOfCompany(Integer callerId, Integer companyId) {
+        if (companyId == null) return;
+
+        UserDetails caller = userRepository.findById(callerId)
+                .orElseThrow(() -> new RuntimeException("Caller not found"));
+        if (Boolean.TRUE.equals(caller.getIsSuperAdmin())) {
+            return;
+        }
+
+        boolean isAdmin = userGSTMappingRepository
+                .findByUser_IdAndIsActiveTrueAndIsAdminTrue(callerId)
+                .stream()
+                .anyMatch(m -> m.getCompanyGST().getCompany().getId().equals(companyId));
+        if (!isAdmin) {
+            throw new RuntimeException("Only the company admin can add users");
+        }
     }
 }
