@@ -19,6 +19,12 @@ public class UserController {
 
     private final UserService service;
 
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<UserResponse>> register(
+            @RequestBody UserRequest req) {
+        return ResponseEntity.ok(ApiResponse.success("Registered", service.register(req)));
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<UserResponse>> create(
             @RequestBody UserRequest req,

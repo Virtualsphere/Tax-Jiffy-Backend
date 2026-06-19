@@ -54,4 +54,13 @@ public class CompanyGSTController {
         service.deactivate(id, userId);
         return ResponseEntity.ok(ApiResponse.success("Deactivated", null));
     }
+
+    @PostMapping("/purchase")
+    public ResponseEntity<ApiResponse<CompanyGSTResponse>> purchase(
+            @RequestBody CompanyGSTRequest req,
+            Authentication auth) {
+        Integer userId = (Integer) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success("Subscription activated",
+                service.purchaseSubscription(req, userId)));
+    }
 }

@@ -20,6 +20,7 @@ public class CompanyProfileService {
         CompanyProfile company = CompanyProfile.builder()
                 .companyName(req.getCompanyName())
                 .companyLogo(req.getCompanyLogo())
+                .ownerUserId(userId)
                 .createdBy(userId)
                 .build();
         return toResponse(repository.save(company));
@@ -61,5 +62,10 @@ public class CompanyProfileService {
         r.setCompanyLogo(c.getCompanyLogo());
         r.setIsActive(c.getIsActive());
         return r;
+    }
+
+    public List<CompanyProfileResponse> getMyCompanies(Integer userId) {
+        return repository.findByOwnerUserIdAndIsActiveTrue(userId)
+                .stream().map(this::toResponse).collect(Collectors.toList());
     }
 }

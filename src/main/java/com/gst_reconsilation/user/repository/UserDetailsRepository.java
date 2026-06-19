@@ -11,4 +11,6 @@ public interface UserDetailsRepository extends JpaRepository<UserDetails, Intege
     Optional<UserDetails> findByUserEmailAndIsActiveTrue(String email);
     List<UserDetails> findByCompany_IdAndIsActiveTrue(Integer companyId);
     boolean existsByUserEmail(String email);
+
+    long countByCompany_IdAndIsActiveTrue(Integer companyId);
 }

@@ -4,10 +4,17 @@ import com.gst_reconsilation.company.dto.CompanyGSTRequest;
 import com.gst_reconsilation.company.dto.CompanyGSTResponse;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.entity.CompanyProfile;
+import com.gst_reconsilation.roles.entity.Roles;
+import com.gst_reconsilation.roles.repository.RolesRepository;
+import com.gst_reconsilation.user.entity.UserDetails;
+import com.gst_reconsilation.user.repository.UserDetailsRepository;
+import com.gst_reconsilation.user.repository.UserGSTMappingRepository;
 import com.gst_reconsilation.subscription.entity.SubscriptionPlan;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.company.repository.CompanyProfileRepository;
 import com.gst_reconsilation.subscription.repository.SubscriptionPlanRepository;
+import com.gst_reconsilation.user.entity.UserGSTMapping;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
@@ -21,6 +28,10 @@ public class CompanyGSTService {
     private final CompanyGSTRepository companyGSTRepository;
     private final CompanyProfileRepository companyProfileRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final RolesRepository rolesRepository;
+    private final UserDetailsRepository userDetailsRepository;
+    private final UserGSTMappingRepository userGSTMappingRepository;
+
 
     public CompanyGSTResponse create(CompanyGSTRequest req, Integer userId) {
         if (companyGSTRepository.existsByGstNumber(req.getGstNumber())) {
@@ -101,5 +112,53 @@ public class CompanyGSTService {
             r.setSubscriptionPlanName(g.getSubscriptionPlan().getName());
         }
         return r;
+    }
+
+    @Transactional
+    public CompanyGSTResponse purchaseSubscription(CompanyGSTRequest req, Integer userId) {
+        // Validate GST not already registered
+        if (companyGSTRepository.existsByGstNumber(req.getGstNumber())) {
+            throw new RuntimeException("GST number already registered: " + req.getGstNumber());
+        }
+
+        CompanyProfile company = companyProfileRepository.findById(req.getCompanyId())
+                .orElseThrow(() -> new RuntimeException("Company not found"));
+
+        // Verify this user owns the company
+        if (!company.getOwnerUserId().equals(userId)) {
+            throw new RuntimeException("You can only add GST to your own company");
+        }
+
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
+                .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
+
+        CompanyGST gst = CompanyGST.builder()
+                .company(company)
+                .gstNumber(req.getGstNumber().toUpperCase())
+                .subscriptionPlan(plan)
+                .isPaymentDone(true)        // payment confirmed
+                .startDate(req.getStartDate())
+                .endDate(req.getEndDate())
+                .createdBy(userId)
+                .build();
+        gst = companyGSTRepository.save(gst);
+
+        // Promote buyer to admin for this GST
+        Roles adminRole = rolesRepository.findByRoleNameAndIsActiveTrue("ADMIN")
+                .orElseThrow(() -> new RuntimeException("ADMIN role not seeded"));
+
+        UserDetails user = userDetailsRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        UserGSTMapping adminMapping = UserGSTMapping.builder()
+                .user(user)
+                .companyGST(gst)
+                .role(adminRole)
+                .isAdmin(true)
+                .createdBy(userId)
+                .build();
+        userGSTMappingRepository.save(adminMapping);
+
+        return toResponse(gst);
     }
 }

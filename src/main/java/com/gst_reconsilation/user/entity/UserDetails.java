@@ -34,6 +34,10 @@ public class UserDetails {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(name = "is_super_admin", nullable = false)
+    @Builder.Default
+    private Boolean isSuperAdmin = false;
+
     @Column(name = "created_date", nullable = false)
     @Builder.Default
     private LocalDate createdDate = LocalDate.now();

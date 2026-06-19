@@ -11,4 +11,6 @@ public interface CompanyGSTRepository extends JpaRepository<CompanyGST, Integer>
     Optional<CompanyGST> findByGstNumber(String gstNumber);
     List<CompanyGST> findByCompany_IdAndIsActiveTrue(Integer companyId);
     boolean existsByGstNumber(String gstNumber);
+
+    Optional<CompanyGST> findFirstByCompany_IdAndIsActiveTrueAndIsPaymentDoneTrue(Integer companyId);
 }
