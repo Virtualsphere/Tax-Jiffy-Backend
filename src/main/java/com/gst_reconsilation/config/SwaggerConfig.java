@@ -1,11 +1,12 @@
-// config/SwaggerConfig.java
 package com.gst_reconsilation.config;
 
 import io.swagger.v3.oas.models.*;
 import io.swagger.v3.oas.models.info.*;
 import io.swagger.v3.oas.models.security.*;
+import io.swagger.v3.oas.models.servers.Server;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import java.util.List;
 
 @Configuration
 public class SwaggerConfig {
@@ -13,6 +14,9 @@ public class SwaggerConfig {
     @Bean
     public OpenAPI openAPI() {
         return new OpenAPI()
+                .servers(List.of(
+                        new Server().url("https://api.taxjiffy.com").description("Production Server")
+                ))
                 .info(new Info()
                         .title("GST Reconciliation System API")
                         .description("APIs for user management, company GST, GSTR-1 upload and sync")
