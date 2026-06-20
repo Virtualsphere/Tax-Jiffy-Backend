@@ -1,5 +1,6 @@
 server:
   port: 7071
+  forward-headers-strategy: framework
 
 spring:
   datasource:
