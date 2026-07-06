@@ -2,6 +2,7 @@ package com.gst_reconsilation.company.service;
 
 import com.gst_reconsilation.company.dto.CompanyGSTRequest;
 import com.gst_reconsilation.company.dto.CompanyGSTResponse;
+import com.gst_reconsilation.company.dto.PurchaseSubscriptionRequest;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.entity.CompanyProfile;
 import com.gst_reconsilation.roles.entity.Roles;
@@ -40,19 +41,14 @@ public class CompanyGSTService {
         CompanyProfile company = companyProfileRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new RuntimeException("Company not found: " + req.getCompanyId()));
 
-        SubscriptionPlan plan = null;
-        if (req.getSubscriptionPlanId() != null) {
-            plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
-                    .orElseThrow(() -> new RuntimeException("Subscription plan not found: " + req.getSubscriptionPlanId()));
+        if (!company.getOwnerUserId().equals(userId)) {
+            throw new RuntimeException("You can only add GST to your own company");
         }
 
         CompanyGST gst = CompanyGST.builder()
                 .company(company)
                 .gstNumber(req.getGstNumber().toUpperCase())
-                .subscriptionPlan(plan)
-                .isPaymentDone(req.getIsPaymentDone())
-                .startDate(req.getStartDate())
-                .endDate(req.getEndDate())
+                .isPaymentDone(false)
                 .createdBy(userId)
                 .build();
 
@@ -74,14 +70,19 @@ public class CompanyGSTService {
         CompanyGST gst = companyGSTRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + id));
 
-        if (req.getSubscriptionPlanId() != null) {
-            SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
-                    .orElseThrow(() -> new RuntimeException("Subscription plan not found: " + req.getSubscriptionPlanId()));
-            gst.setSubscriptionPlan(plan);
+        // Verify caller owns this GST's company
+        if (!gst.getCompany().getOwnerUserId().equals(userId)) {
+            throw new RuntimeException("You can only update your own company's GST");
         }
-        gst.setIsPaymentDone(req.getIsPaymentDone());
-        gst.setStartDate(req.getStartDate());
-        gst.setEndDate(req.getEndDate());
+
+        // Only GST number is updatable — subscription is managed via /purchase
+        if (req.getGstNumber() != null && !req.getGstNumber().equalsIgnoreCase(gst.getGstNumber())) {
+            if (companyGSTRepository.existsByGstNumber(req.getGstNumber())) {
+                throw new RuntimeException("GST number already registered: " + req.getGstNumber());
+            }
+            gst.setGstNumber(req.getGstNumber().toUpperCase());
+        }
+
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
         return toResponse(companyGSTRepository.save(gst));
@@ -115,38 +116,33 @@ public class CompanyGSTService {
     }
 
     @Transactional
-    public CompanyGSTResponse purchaseSubscription(CompanyGSTRequest req, Integer userId) {
-        // Validate GST not already registered
-        if (companyGSTRepository.existsByGstNumber(req.getGstNumber())) {
-            throw new RuntimeException("GST number already registered: " + req.getGstNumber());
+    public CompanyGSTResponse purchaseSubscription(Integer companyGstId, PurchaseSubscriptionRequest req, Integer userId) {
+        CompanyGST gst = companyGSTRepository.findById(companyGstId)
+                .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + companyGstId));
+
+        if (Boolean.TRUE.equals(gst.getIsPaymentDone())) {
+            throw new RuntimeException("Subscription already active for this GST number");
         }
 
-        CompanyProfile company = companyProfileRepository.findById(req.getCompanyId())
-                .orElseThrow(() -> new RuntimeException("Company not found"));
-
-        // Verify this user owns the company
-        if (!company.getOwnerUserId().equals(userId)) {
-            throw new RuntimeException("You can only add GST to your own company");
+        // Verify caller owns the company this GST belongs to
+        if (!gst.getCompany().getOwnerUserId().equals(userId)) {
+            throw new RuntimeException("You can only purchase subscription for your own GST");
         }
 
         SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
-        CompanyGST gst = CompanyGST.builder()
-                .company(company)
-                .gstNumber(req.getGstNumber().toUpperCase())
-                .subscriptionPlan(plan)
-                .isPaymentDone(true)        // payment confirmed
-                .startDate(req.getStartDate())
-                .endDate(req.getEndDate())
-                .createdBy(userId)
-                .build();
-        gst = companyGSTRepository.save(gst);
+        gst.setSubscriptionPlan(plan);
+        gst.setIsPaymentDone(true);
+        gst.setStartDate(req.getStartDate());
+        gst.setEndDate(req.getEndDate());
+        gst.setUpdatedBy(userId);
+        gst.setUpdatedDate(LocalDate.now());
+        companyGSTRepository.save(gst);
 
-        // Promote buyer to admin for this GST
+        // Promote caller to admin for this GST
         Roles adminRole = rolesRepository.findByRoleNameAndIsActiveTrue("ADMIN")
                 .orElseThrow(() -> new RuntimeException("ADMIN role not seeded"));
-
         UserDetails user = userDetailsRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -158,6 +154,11 @@ public class CompanyGSTService {
                 .createdBy(userId)
                 .build();
         userGSTMappingRepository.save(adminMapping);
+
+        if (user.getRole() == null || !"SUPER_ADMIN".equals(user.getRole().getRoleName())) {
+            user.setRole(adminRole);
+            userDetailsRepository.save(user);
+        }
 
         return toResponse(gst);
     }

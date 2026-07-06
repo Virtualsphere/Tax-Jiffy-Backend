@@ -8,5 +8,6 @@ public class UserResponse {
     private String userEmail;
     private Integer companyId;
     private String companyName;
+    private String roleName;
     private Boolean isActive;
 }
