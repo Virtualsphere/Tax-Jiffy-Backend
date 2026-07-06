@@ -1,5 +1,6 @@
 package com.gst_reconsilation.company.controller;
 
+import com.gst_reconsilation.company.dto.PurchaseSubscriptionRequest;
 import com.gst_reconsilation.config.dto.ApiResponse;
 import com.gst_reconsilation.company.dto.CompanyGSTRequest;
 import com.gst_reconsilation.company.dto.CompanyGSTResponse;
@@ -55,12 +56,13 @@ public class CompanyGSTController {
         return ResponseEntity.ok(ApiResponse.success("Deactivated", null));
     }
 
-    @PostMapping("/purchase")
+    @PostMapping("/{id}/purchase")
     public ResponseEntity<ApiResponse<CompanyGSTResponse>> purchase(
-            @RequestBody CompanyGSTRequest req,
+            @PathVariable Integer id,
+            @RequestBody PurchaseSubscriptionRequest req,
             Authentication auth) {
         Integer userId = (Integer) auth.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success("Subscription activated",
-                service.purchaseSubscription(req, userId)));
+                service.purchaseSubscription(id, req, userId)));
     }
 }

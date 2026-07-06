@@ -21,9 +21,10 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         // Seed roles
-        if (rolesRepo.findByRoleNameAndIsActiveTrue("SUPER_ADMIN").isEmpty()) {
-            rolesRepo.save(Roles.builder().roleName("SUPER_ADMIN").description("Platform owner").build());
-        }
+        Roles superAdminRole = rolesRepo.findByRoleNameAndIsActiveTrue("SUPER_ADMIN")
+                .orElseGet(() -> rolesRepo.save(Roles.builder()
+                        .roleName("SUPER_ADMIN").description("Platform owner").build()));
+
         if (rolesRepo.findByRoleNameAndIsActiveTrue("ADMIN").isEmpty()) {
             rolesRepo.save(Roles.builder().roleName("ADMIN").description("Subscription buyer").build());
         }
@@ -31,13 +32,13 @@ public class DataInitializer implements CommandLineRunner {
             rolesRepo.save(Roles.builder().roleName("USER").description("Regular user").build());
         }
 
-        // Seed super admin user
         if (userRepo.findByUserEmailAndIsActiveTrue("superadmin@gst.com").isEmpty()) {
             userRepo.save(UserDetails.builder()
                     .userName("Super Admin")
                     .userEmail("superadmin@gst.com")
                     .userPassword(encoder.encode("ChangeMe@123"))
                     .isSuperAdmin(true)
+                    .role(superAdminRole)
                     .build());
         }
     }

@@ -1,6 +1,7 @@
 package com.gst_reconsilation.user.entity;
 
 import com.gst_reconsilation.company.entity.CompanyProfile;
+import com.gst_reconsilation.roles.entity.Roles;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
@@ -37,6 +38,10 @@ public class UserDetails {
     @Column(name = "is_super_admin", nullable = false)
     @Builder.Default
     private Boolean isSuperAdmin = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "RoleId")
+    private Roles role;
 
     @Column(name = "created_date", nullable = false)
     @Builder.Default

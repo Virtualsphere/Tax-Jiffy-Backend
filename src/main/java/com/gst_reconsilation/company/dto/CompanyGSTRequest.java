@@ -6,8 +6,4 @@ import java.time.LocalDateTime;
 public class CompanyGSTRequest {
     private Integer companyId;
     private String gstNumber;
-    private Integer subscriptionPlanId;
-    private Boolean isPaymentDone;
-    private LocalDateTime startDate;
-    private LocalDateTime endDate;
 }

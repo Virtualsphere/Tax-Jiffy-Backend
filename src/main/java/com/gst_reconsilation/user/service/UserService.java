@@ -15,7 +15,9 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
-
+import com.gst_reconsilation.roles.entity.Roles;
+import com.gst_reconsilation.user.entity.UserGSTMapping;
+import com.gst_reconsilation.roles.repository.RolesRepository;
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -25,35 +27,51 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final UserGSTMappingRepository userGSTMappingRepository;
     private final CompanyGSTRepository companyGSTRepository;
+    private final RolesRepository rolesRepository;
 
     public UserResponse create(UserRequest req, Integer createdBy) {
-        assertCallerIsAdminOfCompany(createdBy, req.getCompanyId());
+        assertCallerIsAdminOfGST(createdBy, req.getCompanyGstId());
+
         if (userRepository.existsByUserEmail(req.getUserEmail())) {
             throw new RuntimeException("Email already registered: " + req.getUserEmail());
         }
-        CompanyGST activeGst = companyGSTRepository
-                .findFirstByCompany_IdAndIsActiveTrueAndIsPaymentDoneTrue(req.getCompanyId())
-                .orElseThrow(() -> new RuntimeException("No active subscription for this company"));
 
-        long currentCount = userRepository.countByCompany_IdAndIsActiveTrue(req.getCompanyId());
-        int allowedCount = activeGst.getSubscriptionPlan().getUserCount();
+        CompanyGST gst = companyGSTRepository.findById(req.getCompanyGstId())
+                .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + req.getCompanyGstId()));
+
+        if (!Boolean.TRUE.equals(gst.getIsPaymentDone()) || gst.getSubscriptionPlan() == null) {
+            throw new RuntimeException("No active subscription for this GST number");
+        }
+
+        long currentCount = userGSTMappingRepository.countByCompanyGST_IdAndIsActiveTrue(req.getCompanyGstId());
+        int allowedCount = gst.getSubscriptionPlan().getUserCount();
         if (currentCount >= allowedCount) {
-            throw new RuntimeException(
-                    "User limit reached (" + allowedCount + " users allowed by your plan)");
+            throw new RuntimeException("User limit reached (" + allowedCount + " users allowed on this GST's plan)");
         }
-        CompanyProfile company = null;
-        if (req.getCompanyId() != null) {
-            company = companyRepository.findById(req.getCompanyId())
-                    .orElseThrow(() -> new RuntimeException("Company not found: " + req.getCompanyId()));
-        }
+
+        Roles userRole = rolesRepository.findByRoleNameAndIsActiveTrue("USER")
+                .orElseThrow(() -> new RuntimeException("USER role not seeded"));
+
         UserDetails user = UserDetails.builder()
-                .company(company)
+                .company(gst.getCompany())   // fixed: link to the GST's company
+                .role(userRole)              // fixed: record their role
                 .userName(req.getUserName())
                 .userEmail(req.getUserEmail())
                 .userPassword(passwordEncoder.encode(req.getUserPassword()))
                 .createdBy(createdBy)
                 .build();
-        return toResponse(userRepository.save(user));
+        user = userRepository.save(user);
+
+        UserGSTMapping mapping = UserGSTMapping.builder()
+                .user(user)
+                .companyGST(gst)
+                .role(userRole)
+                .isAdmin(false)
+                .createdBy(createdBy)
+                .build();
+        userGSTMappingRepository.save(mapping);
+
+        return toResponse(user);
     }
 
     public UserResponse register(UserRequest req) {
@@ -82,11 +100,8 @@ public class UserService {
     public UserResponse update(Integer id, UserRequest req, Integer updatedBy) {
         UserDetails user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found: " + id));
-        if (req.getCompanyId() != null) {
-            CompanyProfile company = companyRepository.findById(req.getCompanyId())
-                    .orElseThrow(() -> new RuntimeException("Company not found: " + req.getCompanyId()));
-            user.setCompany(company);
-        }
+
+
         user.setUserName(req.getUserName());
         user.setUpdatedBy(updatedBy);
         user.setUpdatedDate(LocalDate.now());
@@ -112,24 +127,22 @@ public class UserService {
             r.setCompanyId(u.getCompany().getId());
             r.setCompanyName(u.getCompany().getCompanyName());
         }
+        if (u.getRole() != null) {
+            r.setRoleName(u.getRole().getRoleName());
+        }
         return r;
     }
 
-    private void assertCallerIsAdminOfCompany(Integer callerId, Integer companyId) {
-        if (companyId == null) return;
-
+    private void assertCallerIsAdminOfGST(Integer callerId, Integer companyGstId) {
         UserDetails caller = userRepository.findById(callerId)
                 .orElseThrow(() -> new RuntimeException("Caller not found"));
-        if (Boolean.TRUE.equals(caller.getIsSuperAdmin())) {
-            return;
-        }
+        if (Boolean.TRUE.equals(caller.getIsSuperAdmin())) return;
 
         boolean isAdmin = userGSTMappingRepository
                 .findByUser_IdAndIsActiveTrueAndIsAdminTrue(callerId)
                 .stream()
-                .anyMatch(m -> m.getCompanyGST().getCompany().getId().equals(companyId));
-        if (!isAdmin) {
-            throw new RuntimeException("Only the company admin can add users");
-        }
+                .anyMatch(m -> m.getCompanyGST().getId().equals(companyGstId));
+
+        if (!isAdmin) throw new RuntimeException("Only the GST admin can add users to this GST");
     }
 }
