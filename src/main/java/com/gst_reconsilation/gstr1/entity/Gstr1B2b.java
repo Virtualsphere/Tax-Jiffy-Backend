@@ -47,7 +47,7 @@ public class Gstr1B2b {
     @Column(name = "place_of_supply", length = 50)
     private String placeOfSupply;
 
-    @Column(name = "reverse_charge", length = 1)
+    @Column(name = "reverse_charge", length = 10)
     private String reverseCharge;
 
     @Column(name = "applicable_tax_rate_pct", precision = 5, scale = 2)
