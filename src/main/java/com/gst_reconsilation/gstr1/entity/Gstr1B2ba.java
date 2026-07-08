@@ -51,7 +51,7 @@ public class Gstr1B2ba {
     @Column(name = "place_of_supply", length = 50, nullable = false)
     private String placeOfSupply;
 
-    @Column(name = "reverse_charge", length = 1)
+    @Column(name = "reverse_charge", length = 10)
     @Builder.Default
     private String reverseCharge = "N";
 
