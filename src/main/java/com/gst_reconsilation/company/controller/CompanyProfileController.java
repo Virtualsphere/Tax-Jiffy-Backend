@@ -32,6 +32,13 @@ public class CompanyProfileController {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getAll()));
     }
 
+    @GetMapping("/my-companies")
+    public ResponseEntity<ApiResponse<List<CompanyProfileResponse>>> getMyCompanies(
+            Authentication auth) {
+        Integer userId = (Integer) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getMyCompanies(userId)));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<CompanyProfileResponse>> getById(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getById(id)));
