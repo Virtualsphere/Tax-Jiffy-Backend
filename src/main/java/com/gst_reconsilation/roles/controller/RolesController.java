@@ -12,7 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.List;
 
-@Tag(name = "Roles", description = "Role management")
+@Tag(name = "Roles", description = "Role management (scoped per company + GST)")
 @RestController
 @RequestMapping("/api/roles")
 @RequiredArgsConstructor
@@ -36,6 +36,14 @@ public class RolesController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<RolesResponse>> getById(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getById(id)));
+    }
+
+    // NEW: fetch roles scoped to a specific company + GST registration
+    @GetMapping("/by-company-and-gst")
+    public ResponseEntity<ApiResponse<List<RolesResponse>>> getByCompanyAndGst(
+            @RequestParam Integer companyId,
+            @RequestParam Integer companyGstId) {
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getByCompanyAndGst(companyId, companyGstId)));
     }
 
     @PutMapping("/{id}")

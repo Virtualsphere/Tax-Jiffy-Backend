@@ -20,17 +20,9 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        // Seed roles
-        Roles superAdminRole = rolesRepo.findByRoleNameAndIsActiveTrue("SUPER_ADMIN")
+        Roles superAdminRole = rolesRepo.findByRoleNameAndCompanyGSTIsNullAndIsActiveTrue("SUPER_ADMIN")
                 .orElseGet(() -> rolesRepo.save(Roles.builder()
                         .roleName("SUPER_ADMIN").description("Platform owner").build()));
-
-        if (rolesRepo.findByRoleNameAndIsActiveTrue("ADMIN").isEmpty()) {
-            rolesRepo.save(Roles.builder().roleName("ADMIN").description("Subscription buyer").build());
-        }
-        if (rolesRepo.findByRoleNameAndIsActiveTrue("USER").isEmpty()) {
-            rolesRepo.save(Roles.builder().roleName("USER").description("Regular user").build());
-        }
 
         if (userRepo.findByUserEmailAndIsActiveTrue("superadmin@gst.com").isEmpty()) {
             userRepo.save(UserDetails.builder()

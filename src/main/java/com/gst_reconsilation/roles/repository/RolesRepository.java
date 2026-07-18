@@ -9,5 +9,14 @@ import java.util.Optional;
 @Repository
 public interface RolesRepository extends JpaRepository<Roles, Integer> {
     List<Roles> findByIsActiveTrue();
-    Optional<Roles> findByRoleNameAndIsActiveTrue(String roleName);
+
+    // Global/system roles only (e.g. SUPER_ADMIN) — companyGST is null.
+    Optional<Roles> findByRoleNameAndCompanyGSTIsNullAndIsActiveTrue(String roleName);
+
+    // Tenant-scoped roles — unique per (roleName, companyGstId).
+    Optional<Roles> findByRoleNameAndCompanyGST_IdAndIsActiveTrue(String roleName, Integer companyGstId);
+
+    List<Roles> findByCompanyGST_IdAndIsActiveTrue(Integer companyGstId);
+    List<Roles> findByCompany_IdAndIsActiveTrue(Integer companyId);
+    List<Roles> findByCompany_IdAndCompanyGST_IdAndIsActiveTrue(Integer companyId, Integer companyGstId);
 }

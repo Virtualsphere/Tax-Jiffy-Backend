@@ -49,12 +49,20 @@ public class UserService {
             throw new RuntimeException("User limit reached (" + allowedCount + " users allowed on this GST's plan)");
         }
 
-        Roles userRole = rolesRepository.findByRoleNameAndIsActiveTrue("USER")
-                .orElseThrow(() -> new RuntimeException("USER role not seeded"));
+        // Scoped USER role for this company + GST — created on first use instead
+        // of relying on a globally-seeded role.
+        Roles userRole = rolesRepository.findByRoleNameAndCompanyGST_IdAndIsActiveTrue("USER", gst.getId())
+                .orElseGet(() -> rolesRepository.save(Roles.builder()
+                        .roleName("USER")
+                        .description("User role for GST " + gst.getGstNumber())
+                        .company(gst.getCompany())
+                        .companyGST(gst)
+                        .createdBy(createdBy)
+                        .build()));
 
         UserDetails user = UserDetails.builder()
-                .company(gst.getCompany())   // fixed: link to the GST's company
-                .role(userRole)              // fixed: record their role
+                .company(gst.getCompany())
+                .role(userRole)
                 .userName(req.getUserName())
                 .userEmail(req.getUserEmail())
                 .userPassword(passwordEncoder.encode(req.getUserPassword()))
