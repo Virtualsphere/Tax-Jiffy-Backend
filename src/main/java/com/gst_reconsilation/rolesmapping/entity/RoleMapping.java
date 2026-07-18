@@ -27,21 +27,26 @@ public class RoleMapping {
     @Column(name = "screen_number", length = 255)
     private String screenNumber;
 
-    @Column(name = "add", nullable = false)
+    // NOTE: "add" and "delete" are reserved words in MySQL. Using them as
+    // unquoted column names breaks table creation ("You have an error in
+    // your SQL syntax ... near 'add bit not null'"). Explicit non-reserved
+    // column names fix it without touching the Java field names (so the
+    // request/response DTOs and JSON payloads are unaffected).
+    @Column(name = "can_add", nullable = false)
     @Builder.Default
-    private Boolean add= true;
+    private Boolean add = true;
 
-    @Column(name = "edit", nullable = false)
+    @Column(name = "can_edit", nullable = false)
     @Builder.Default
-    private Boolean edit= true;
+    private Boolean edit = true;
 
-    @Column(name = "view", nullable = false)
+    @Column(name = "can_view", nullable = false)
     @Builder.Default
-    private Boolean view= true;
+    private Boolean view = true;
 
-    @Column(name = "delete", nullable = false)
+    @Column(name = "can_delete", nullable = false)
     @Builder.Default
-    private Boolean delete= true;
+    private Boolean delete = true;
 
     @Column(name = "created_date", nullable = false)
     @Builder.Default

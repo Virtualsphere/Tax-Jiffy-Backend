@@ -65,4 +65,15 @@ public class CompanyGSTController {
         return ResponseEntity.ok(ApiResponse.success("Subscription activated",
                 service.purchaseSubscription(id, req, userId)));
     }
+
+    // NEW: upgrade an already-active subscription plan
+    @PutMapping("/{id}/upgrade")
+    public ResponseEntity<ApiResponse<CompanyGSTResponse>> upgrade(
+            @PathVariable Integer id,
+            @RequestBody PurchaseSubscriptionRequest req,
+            Authentication auth) {
+        Integer userId = (Integer) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success("Subscription upgraded",
+                service.upgradeSubscription(id, req, userId)));
+    }
 }

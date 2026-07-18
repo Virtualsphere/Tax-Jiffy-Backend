@@ -70,12 +70,10 @@ public class CompanyGSTService {
         CompanyGST gst = companyGSTRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + id));
 
-        // Verify caller owns this GST's company
         if (!gst.getCompany().getOwnerUserId().equals(userId)) {
             throw new RuntimeException("You can only update your own company's GST");
         }
 
-        // Only GST number is updatable — subscription is managed via /purchase
         if (req.getGstNumber() != null && !req.getGstNumber().equalsIgnoreCase(gst.getGstNumber())) {
             if (companyGSTRepository.existsByGstNumber(req.getGstNumber())) {
                 throw new RuntimeException("GST number already registered: " + req.getGstNumber());
@@ -115,16 +113,20 @@ public class CompanyGSTService {
         return r;
     }
 
+    /**
+     * First purchase for a GST. Auto-creates (or reuses) an ADMIN role scoped
+     * to this company + GST — no more dependency on a globally-seeded "ADMIN"
+     * role, which is what was crashing this endpoint before.
+     */
     @Transactional
     public CompanyGSTResponse purchaseSubscription(Integer companyGstId, PurchaseSubscriptionRequest req, Integer userId) {
         CompanyGST gst = companyGSTRepository.findById(companyGstId)
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + companyGstId));
 
         if (Boolean.TRUE.equals(gst.getIsPaymentDone())) {
-            throw new RuntimeException("Subscription already active for this GST number");
+            throw new RuntimeException("Subscription already active for this GST number. Use the upgrade endpoint instead.");
         }
 
-        // Verify caller owns the company this GST belongs to
         if (!gst.getCompany().getOwnerUserId().equals(userId)) {
             throw new RuntimeException("You can only purchase subscription for your own GST");
         }
@@ -140,9 +142,8 @@ public class CompanyGSTService {
         gst.setUpdatedDate(LocalDate.now());
         companyGSTRepository.save(gst);
 
-        // Promote caller to admin for this GST
-        Roles adminRole = rolesRepository.findByRoleNameAndIsActiveTrue("ADMIN")
-                .orElseThrow(() -> new RuntimeException("ADMIN role not seeded"));
+        Roles adminRole = getOrCreateRoleForGST(gst, "ADMIN", "Admin role for GST " + gst.getGstNumber(), userId);
+
         UserDetails user = userDetailsRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -155,11 +156,59 @@ public class CompanyGSTService {
                 .build();
         userGSTMappingRepository.save(adminMapping);
 
-        if (user.getRole() == null || !"SUPER_ADMIN".equals(user.getRole().getRoleName())) {
-            user.setRole(adminRole);
-            userDetailsRepository.save(user);
+        return toResponse(gst);
+    }
+
+    /**
+     * NEW: upgrade an already-active subscription plan for a GST.
+     * Callable by the company owner or any user already marked as admin
+     * for this GST (not just the original buyer).
+     */
+    @Transactional
+    public CompanyGSTResponse upgradeSubscription(Integer companyGstId, PurchaseSubscriptionRequest req, Integer userId) {
+        CompanyGST gst = companyGSTRepository.findById(companyGstId)
+                .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + companyGstId));
+
+        if (!Boolean.TRUE.equals(gst.getIsPaymentDone())) {
+            throw new RuntimeException("No active subscription to upgrade. Use the purchase endpoint instead.");
         }
 
-        return toResponse(gst);
+        assertCallerIsAdminOfGST(userId, gst);
+
+        SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
+                .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
+
+        gst.setSubscriptionPlan(plan);
+        if (req.getStartDate() != null) gst.setStartDate(req.getStartDate());
+        if (req.getEndDate() != null) gst.setEndDate(req.getEndDate());
+        gst.setUpdatedBy(userId);
+        gst.setUpdatedDate(LocalDate.now());
+
+        return toResponse(companyGSTRepository.save(gst));
+    }
+
+    private Roles getOrCreateRoleForGST(CompanyGST gst, String roleName, String description, Integer userId) {
+        return rolesRepository.findByRoleNameAndCompanyGST_IdAndIsActiveTrue(roleName, gst.getId())
+                .orElseGet(() -> rolesRepository.save(Roles.builder()
+                        .roleName(roleName)
+                        .description(description)
+                        .company(gst.getCompany())
+                        .companyGST(gst)
+                        .createdBy(userId)
+                        .build()));
+    }
+
+    private void assertCallerIsAdminOfGST(Integer callerId, CompanyGST gst) {
+        UserDetails caller = userDetailsRepository.findById(callerId)
+                .orElseThrow(() -> new RuntimeException("Caller not found"));
+        if (Boolean.TRUE.equals(caller.getIsSuperAdmin())) return;
+        if (gst.getCompany().getOwnerUserId().equals(callerId)) return;
+
+        boolean isAdmin = userGSTMappingRepository
+                .findByUser_IdAndIsActiveTrueAndIsAdminTrue(callerId)
+                .stream()
+                .anyMatch(m -> m.getCompanyGST().getId().equals(gst.getId()));
+
+        if (!isAdmin) throw new RuntimeException("Only the GST admin can upgrade this subscription");
     }
 }

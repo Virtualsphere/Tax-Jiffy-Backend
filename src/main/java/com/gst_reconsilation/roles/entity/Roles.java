@@ -1,17 +1,18 @@
 package com.gst_reconsilation.roles.entity;
 
+import com.gst_reconsilation.company.entity.CompanyGST;
+import com.gst_reconsilation.company.entity.CompanyProfile;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "Roles")
+@Table(name = "Roles",
+        uniqueConstraints = @UniqueConstraint(name = "UQ_Roles_Name_CompanyGST", columnNames = {"RoleName", "CompanyGSTId"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Setter
-@Getter
 public class Roles {
 
     @Id
@@ -23,6 +24,14 @@ public class Roles {
 
     @Column(name = "Description", length = 255)
     private String description;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "CompanyId")
+    private CompanyProfile company;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "CompanyGSTId")
+    private CompanyGST companyGST;
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default

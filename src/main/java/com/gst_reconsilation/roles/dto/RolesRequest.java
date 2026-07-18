@@ -6,4 +6,6 @@ import lombok.Data;
 public class RolesRequest {
     private String roleName;
     private String description;
+    private Integer companyId;
+    private Integer companyGstId;
 }
