@@ -44,3 +44,5 @@ gstr1:
 app:
   excel:
     upload-dir: /home/aditya/uploads/excel
+    dir: /home/aditya/uploads/photos
+    base-url: https://api.taxjiffy.com/uploads/photos
