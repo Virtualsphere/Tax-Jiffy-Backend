@@ -72,4 +72,11 @@ public class Gstr1B2b {
     @Column(name = "created_date", nullable = false)
     @Builder.Default
     private LocalDate createdDate = LocalDate.now();
+
+    @Column(name = "is_paired", nullable = false)
+    @Builder.Default
+    private Boolean isPaired = false;
+
+    @Column(name = "paired_irn", length = 100)
+    private String pairedIrn;
 }

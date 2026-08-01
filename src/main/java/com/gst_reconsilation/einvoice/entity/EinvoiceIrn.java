@@ -90,4 +90,11 @@ public class EinvoiceIrn {
 
     @Column(name = "created_by", nullable = false)
     private Integer createdBy;
+
+    @Column(name = "is_paired", nullable = false)
+    @Builder.Default
+    private Boolean isPaired = false;
+
+    @Column(name = "paired_gstr1_b2b_id")
+    private Integer pairedGstr1B2bId;
 }
