@@ -14,6 +14,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
@@ -144,6 +145,7 @@ public class EwaybillSyncService {
         return recordRepository.save(record);
     }
 
+    // EwaybillSyncService.java — replace the existing createManual() method with this
     @Transactional
     public EwaybillRecord createManual(EwaybillManualRequest req, Integer userId) {
         if (recordRepository.existsByEwbNo(req.getEwbNo())) {
@@ -152,24 +154,35 @@ public class EwaybillSyncService {
         EwaybillRecord record = EwaybillRecord.builder()
                 .ewbNo(req.getEwbNo())
                 .ewbDate(req.getEwbDate())
+                .genMode(req.getGenMode())
+                .userGstin(req.getUserGstin())
+                .supplyType(req.getSupplyType())
+                .subSupplyType(req.getSubSupplyType())
                 .docType(req.getDocType())
                 .docNo(req.getDocNo())
                 .docDate(req.getDocDate())
                 .fromGstin(req.getFromGstin())
                 .fromTrdName(req.getFromTrdName())
                 .fromPlace(req.getFromPlace())
+                .fromPincode(req.getFromPincode())
+                .fromStateCode(req.getFromStateCode())
                 .toGstin(req.getToGstin())
                 .toTrdName(req.getToTrdName())
                 .toPlace(req.getToPlace())
+                .toPincode(req.getToPincode())
+                .toStateCode(req.getToStateCode())
                 .totalValue(req.getTotalValue())
                 .totInvValue(req.getTotInvValue())
                 .cgstValue(req.getCgstValue())
                 .sgstValue(req.getSgstValue())
                 .igstValue(req.getIgstValue())
                 .cessValue(req.getCessValue())
+                .transporterId(req.getTransporterId())
                 .transporterName(req.getTransporterName())
                 .status(req.getStatus())
                 .validUpto(req.getValidUpto())
+                .extendedTimes(req.getExtendedTimes())
+                .rejectStatus(req.getRejectStatus())
                 .source("MANUAL")
                 .createdBy(userId)
                 .build();
@@ -178,5 +191,34 @@ public class EwaybillSyncService {
 
     public List<EwaybillRecord> getByFiling(Integer filingId) {
         return recordRepository.findByFiling_Id(filingId);
+    }
+
+    // EwaybillSyncService.java — add these fields + method
+    private final EwaybillExcelParserService excelParserService; // add to constructor injection
+
+    @Transactional
+    public EwaybillFiling uploadExcel(MultipartFile file, Integer companyGstId, String syncDate, Integer userId) throws Exception {
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || (!originalName.endsWith(".xlsx") && !originalName.endsWith(".xls"))) {
+            throw new IllegalArgumentException("Only .xlsx or .xls files are accepted");
+        }
+        CompanyGST companyGST = companyGSTRepository.findById(companyGstId)
+                .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + companyGstId));
+
+        EwaybillFiling filing = filingRepository
+                .findByCompanyGST_IdAndSyncDate(companyGstId, syncDate)
+                .orElseGet(() -> EwaybillFiling.builder()
+                        .companyGST(companyGST).syncDate(syncDate).createdBy(userId).build());
+        filing = filingRepository.save(filing);
+
+        List<EwaybillRecord> parsed;
+        try (var is = file.getInputStream()) {
+            parsed = excelParserService.parse(is, filing, userId);
+        }
+        recordRepository.saveAll(parsed);
+
+        filing.setSyncStatus("EXCEL");
+        filing.setSyncedAt(LocalDateTime.now());
+        return filingRepository.save(filing);
     }
 }
