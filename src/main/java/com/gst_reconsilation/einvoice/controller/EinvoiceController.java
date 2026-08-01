@@ -8,9 +8,12 @@ import com.gst_reconsilation.einvoice.entity.EinvoiceIrn;
 import com.gst_reconsilation.einvoice.service.EinvoiceSyncService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
 import java.util.List;
 
 @Tag(name = "E-Invoice", description = "Sync and manage e-invoice (IRN) data")
@@ -48,5 +51,15 @@ public class EinvoiceController {
     @GetMapping("/filings/{filingId}/hsn")
     public ResponseEntity<ApiResponse<List<EinvoiceHsnSummary>>> getHsn(@PathVariable Integer filingId) {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getHsnByFiling(filingId)));
+    }
+
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<EinvoiceSyncResponse>> uploadExcel(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam Integer companyGstId,
+            @RequestParam String retPeriod,
+            Authentication auth) throws Exception {
+        Integer userId = (Integer) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success("Uploaded", service.uploadExcel(file, companyGstId, retPeriod, userId)));
     }
 }

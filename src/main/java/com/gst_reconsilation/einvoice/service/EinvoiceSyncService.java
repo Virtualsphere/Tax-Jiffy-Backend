@@ -14,6 +14,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ public class EinvoiceSyncService {
     private final EinvoiceHsnSummaryRepository hsnRepository;
     private final RestTemplate restTemplate;
     private final GstApiCredentialsProperties creds;
+    private final EinvoiceExcelParserService excelParserService;
 
     @Transactional
     public EinvoiceSyncResponse sync(EinvoiceSyncRequest req, Integer userId) {
@@ -82,6 +84,7 @@ public class EinvoiceSyncService {
         EinvoiceIrnDtlApiResponse resp = restTemplate.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(commonHeaders()), EinvoiceIrnDtlApiResponse.class).getBody();
 
+        // EinvoiceSyncService.fetchAndStoreIrnDetail() — add one line
         if (resp != null && resp.getData() != null) {
             var d = resp.getData();
             existing.setSignedInvoice(d.getSignedInvoice());
@@ -90,6 +93,7 @@ public class EinvoiceSyncService {
             existing.setEwbValidTill(d.getEwbValidTill());
             existing.setCnlRsn(d.getCnlRsn());
             existing.setCnlRem(d.getCnlRem());
+            existing.setRemarks(d.getRemarks());   // ← added
             irnRepository.save(existing);
         }
         return existing;
@@ -192,6 +196,7 @@ public class EinvoiceSyncService {
         return headers;
     }
 
+    // EinvoiceSyncService.java — replace the existing createManual() method with this
     @Transactional
     public EinvoiceIrn createManual(EinvoiceIrnManualRequest req, Integer userId) {
         CompanyGST companyGST = companyGSTRepository.findById(req.getCompanyGstId())
@@ -224,9 +229,11 @@ public class EinvoiceSyncService {
                 .irnStatus(req.getIrnStatus())
                 .ewbNo(req.getEwbNo())
                 .ewbDt(req.getEwbDt())
+                .ewbValidTill(req.getEwbValidTill())
                 .cnlDt(req.getCnlDt())
                 .cnlRsn(req.getCnlRsn())
                 .cnlRem(req.getCnlRem())
+                .remarks(req.getRemarks())
                 .source("MANUAL")
                 .createdBy(userId)
                 .build();
@@ -240,5 +247,35 @@ public class EinvoiceSyncService {
 
     public List<EinvoiceHsnSummary> getHsnByFiling(Integer filingId) {
         return hsnRepository.findByFiling_Id(filingId);
+    }
+
+    @Transactional
+    public EinvoiceSyncResponse uploadExcel(MultipartFile file, Integer companyGstId, String retPeriod, Integer userId) throws Exception {
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || (!originalName.endsWith(".xlsx") && !originalName.endsWith(".xls"))) {
+            throw new IllegalArgumentException("Only .xlsx or .xls files are accepted");
+        }
+        CompanyGST companyGST = companyGSTRepository.findById(companyGstId)
+                .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + companyGstId));
+
+        EinvoiceFiling filing = filingRepository
+                .findByCompanyGST_IdAndRetPeriod(companyGstId, retPeriod)
+                .orElseGet(() -> EinvoiceFiling.builder()
+                        .companyGST(companyGST).retPeriod(retPeriod).createdBy(userId).build());
+        filing = filingRepository.save(filing);
+
+        List<EinvoiceIrn> parsed;
+        try (var is = file.getInputStream()) {
+            parsed = excelParserService.parse(is, filing, userId);
+        }
+        int rows = irnRepository.saveAll(parsed).size();
+
+        filing.setSyncStatus("EXCEL");
+        filing.setSyncedAt(LocalDateTime.now());
+        filingRepository.save(filing);
+
+        return EinvoiceSyncResponse.builder()
+                .filingId(filing.getId()).retPeriod(retPeriod)
+                .syncStatus("EXCEL").irnRowsSynced(rows).build();
     }
 }

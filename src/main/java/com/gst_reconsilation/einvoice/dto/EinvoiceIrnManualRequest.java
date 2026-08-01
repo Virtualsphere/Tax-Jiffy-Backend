@@ -1,4 +1,4 @@
-// einvoice/dto/EinvoiceIrnManualRequest.java
+// einvoice/dto/EinvoiceIrnManualRequest.java — full corrected version
 package com.gst_reconsilation.einvoice.dto;
 
 import lombok.Data;
@@ -20,7 +20,9 @@ public class EinvoiceIrnManualRequest {
     private String irnStatus;
     private Long ewbNo;
     private String ewbDt;
+    private String ewbValidTill;
     private String cnlDt;
     private String cnlRsn;
     private String cnlRem;
+    private String remarks;
 }

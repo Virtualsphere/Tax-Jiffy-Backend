@@ -70,6 +70,9 @@ public class EinvoiceIrn {
     @Column(name = "cnl_rem", length = 255)
     private String cnlRem;
 
+    @Column(name = "remarks", length = 255)
+    private String remarks;
+
     /** JWT-encoded full invoice payload — populated only when irndtl is fetched, not on the basic irnlist sync. */
     @Column(name = "signed_invoice", columnDefinition = "TEXT")
     private String signedInvoice;
