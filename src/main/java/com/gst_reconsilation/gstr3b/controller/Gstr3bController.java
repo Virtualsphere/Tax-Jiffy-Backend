@@ -5,9 +5,11 @@ import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.config.dto.ApiResponse;
 import com.gst_reconsilation.gstr3b.dto.*;
 import com.gst_reconsilation.gstr3b.entity.Gstr3bFiling;
+import com.gst_reconsilation.gstr3b.entity.Gstr3bReconciliationResult;
 import com.gst_reconsilation.gstr3b.repository.Gstr3bFilingRepository;
-import com.gst_reconsilation.gstr3b.service.Gstr3bImsSyncService;
+import com.gst_reconsilation.gstr3b.repository.Gstr3bReconciliationResultRepository;
 import com.gst_reconsilation.gstr3b.service.Gstr3bPreviewService;
+import com.gst_reconsilation.gstr3b.service.Gstr3bReconciliationService;
 import com.gst_reconsilation.gstr3b.service.Gstr3bTwoBSyncService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +21,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "GSTR-3B", description = "GSTR-3B filing period management, IMS/GSTR-2B sync for ITC reconciliation, and preview generation")
+@Tag(name = "GSTR-3B", description = "GSTR-3B filing period management, GSTR-2B sync, IMS-vs-purchase-register reconciliation, and preview generation")
 @RestController
 @RequestMapping("/api/gstr3b")
 @RequiredArgsConstructor
@@ -27,15 +29,11 @@ public class Gstr3bController {
 
     private final Gstr3bFilingRepository filingRepository;
     private final CompanyGSTRepository companyGSTRepository;
-    private final Gstr3bImsSyncService imsSyncService;
     private final Gstr3bTwoBSyncService twoBSyncService;
     private final Gstr3bPreviewService previewService;
+    private final Gstr3bReconciliationService reconciliationService;
+    private final Gstr3bReconciliationResultRepository reconciliationResultRepository;
 
-    /**
-     * Creates (or fetches, if already present for the period) the Gstr3bFiling
-     * anchor record and links it to the outward (GSTR-1) and inward (purchase
-     * register) filings for the same period.
-     */
     @PostMapping("/filings")
     public ResponseEntity<ApiResponse<Gstr3bFiling>> createOrLinkFiling(
             @RequestBody Gstr3bFilingLinkRequest req, Authentication auth) {
@@ -55,6 +53,7 @@ public class Gstr3bController {
 
         if (req.getGstr1FilingId() != null) filing.setGstr1FilingId(req.getGstr1FilingId());
         if (req.getGstr2FilingId() != null) filing.setGstr2FilingId(req.getGstr2FilingId());
+        if (req.getImsFilingId() != null) filing.setImsFilingId(req.getImsFilingId());
         filing.setUpdatedBy(userId);
         filing.setUpdatedDate(LocalDate.now());
 
@@ -73,23 +72,6 @@ public class Gstr3bController {
         return ResponseEntity.ok(ApiResponse.success("OK", filing));
     }
 
-    /**
-     * Syncs supplier invoices from IMS (GET /ims/supplierinvoices) and stores
-     * them as flattened, accept/reject/pending-tagged rows for this filing.
-     */
-    @PostMapping("/filings/{filingId}/sync-ims")
-    public ResponseEntity<ApiResponse<Map<String, Integer>>> syncIms(
-            @PathVariable Integer filingId, @RequestBody ImsCredentials credentials, Authentication auth) {
-
-        Integer userId = (Integer) auth.getPrincipal();
-        int rows = imsSyncService.sync(filingId, credentials, userId);
-        return ResponseEntity.ok(ApiResponse.success("IMS sync complete", Map.of("rowsSynced", rows)));
-    }
-
-    /**
-     * Syncs the ITC summary from GSTR-2B (GET /gstr2b/all) for use in table 4
-     * of the preview.
-     */
     @PostMapping("/filings/{filingId}/sync-2b")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> sync2b(
             @PathVariable Integer filingId, @RequestBody TwoBCredentials credentials, Authentication auth) {
@@ -99,7 +81,6 @@ public class Gstr3bController {
         return ResponseEntity.ok(ApiResponse.success("GSTR-2B sync complete", Map.of("rowsSynced", rows)));
     }
 
-    /** Manual entry for table 5.1 (Interest and Late Fee). */
     @PutMapping("/filings/{filingId}/interest-late-fee")
     public ResponseEntity<ApiResponse<Gstr3bFiling>> updateInterestLateFee(
             @PathVariable Integer filingId, @RequestBody Gstr3bInterestLateFeeRequest req, Authentication auth) {
@@ -120,12 +101,23 @@ public class Gstr3bController {
         return ResponseEntity.ok(ApiResponse.success("OK", filingRepository.save(filing)));
     }
 
-    /**
-     * Builds and returns the GSTR-3B preview (tables 3.1, 3.2, 4, 5, 5.1, 6.1)
-     * for the frontend, reconciling outward (GSTR-1) + inward (purchase
-     * register) + IMS/GSTR-2B synced data. Does not generate a challan or
-     * submit anything to the GST system.
-     */
+    /** Runs the purchase-register vs IMS comparison and persists the result. */
+    @PostMapping("/filings/{filingId}/reconcile")
+    public ResponseEntity<ApiResponse<List<Gstr3bReconciliationResult>>> reconcile(@PathVariable Integer filingId) {
+        return ResponseEntity.ok(ApiResponse.success("Reconciliation complete", reconciliationService.reconcile(filingId)));
+    }
+
+    /** Returns the last-computed reconciliation result without re-running it. */
+    @GetMapping("/filings/{filingId}/reconciliation")
+    public ResponseEntity<ApiResponse<List<Gstr3bReconciliationResult>>> getReconciliation(
+            @PathVariable Integer filingId,
+            @RequestParam(required = false) String matchStatus) {
+        List<Gstr3bReconciliationResult> results = matchStatus != null
+                ? reconciliationResultRepository.findByFiling_IdAndMatchStatus(filingId, matchStatus)
+                : reconciliationResultRepository.findByFiling_Id(filingId);
+        return ResponseEntity.ok(ApiResponse.success("OK", results));
+    }
+
     @GetMapping("/filings/{filingId}/preview")
     public ResponseEntity<ApiResponse<Gstr3bPreviewResponse>> getPreview(@PathVariable Integer filingId) {
         return ResponseEntity.ok(ApiResponse.success("OK", previewService.buildPreview(filingId)));

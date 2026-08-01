@@ -1,0 +1,334 @@
+<!-- src/main/resources/templates/pdf/gstr1-report.html -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>GSTR-1</title>
+    <style>
+        @page { size: A4 landscape; margin: 24px; }
+        body { font-family: 'NotoSans', Arial, sans-serif; font-size: 9px; color: #111; }
+        h1 { font-size: 16px; margin-bottom: 4px; }
+        h2 { font-size: 12px; margin: 16px 0 4px 0; background: #f1f3f9; padding: 4px 6px; }
+        h3 { font-size: 10px; margin: 8px 0 4px 0; color: #5a6acf; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 6px; page-break-inside: auto; }
+        tr { page-break-inside: avoid; }
+        th, td { border: 1px solid #ccc; padding: 3px 5px; text-align: right; }
+        th { background: #eef0fa; text-align: center; }
+        td.label { text-align: left; }
+        .total-row { font-weight: bold; background: #f7f7f7; }
+        .empty { text-align: center; color: #999; font-style: italic; }
+        .basic-table td.value { font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<h1>Form GSTR-1</h1>
+<h2>Basic Details</h2>
+<table class="basic-table">
+    <tr><th>Sr.</th><th>Particulars</th><th>Value</th></tr>
+    <tr th:each="item : ${report.basicData}">
+        <td th:text="${item.sr}">1</td>
+        <td class="label" th:text="${item.label} + ' (' + ${item.sub} + ')'">GSTIN</td>
+        <td class="value" th:text="${item.value}">N/A</td>
+    </tr>
+</table>
+
+<!-- Table 4 -->
+<h2>4. Taxable outward supplies to registered persons</h2>
+<h3>4A. Supplies other than reverse charge &amp; e-commerce</h3>
+<table>
+    <tr><th>GSTIN</th><th>Invoice No</th><th>Invoice Date</th><th>Invoice Value</th>
+        <th>Taxable Value</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Cess</th><th>POS</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table4.section4A)}">
+        <td class="empty" colspan="10">No records</td>
+    </tr>
+    <tr th:each="row : ${report.outwardData.table4.section4A}">
+        <td th:text="${row.gstin}">-</td>
+        <td th:text="${row.invoiceNo}">-</td>
+        <td th:text="${row.invoiceDate}">-</td>
+        <td th:text="${row.invoiceValue}">-</td>
+        <td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.igst}">-</td>
+        <td th:text="${row.cgst}">-</td>
+        <td th:text="${row.sgst}">-</td>
+        <td th:text="${row.cess}">-</td>
+        <td th:text="${row.pos}">-</td>
+    </tr>
+</table>
+
+<h3>4B. Supplies attracting reverse charge</h3>
+<table>
+    <tr><th>GSTIN</th><th>Invoice No</th><th>Invoice Date</th><th>Invoice Value</th>
+        <th>Taxable Value</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Cess</th><th>POS</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table4.section4B)}">
+        <td class="empty" colspan="10">No records</td>
+    </tr>
+    <tr th:each="row : ${report.outwardData.table4.section4B}">
+        <td th:text="${row.gstin}">-</td>
+        <td th:text="${row.invoiceNo}">-</td>
+        <td th:text="${row.invoiceDate}">-</td>
+        <td th:text="${row.invoiceValue}">-</td>
+        <td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.igst}">-</td>
+        <td th:text="${row.cgst}">-</td>
+        <td th:text="${row.sgst}">-</td>
+        <td th:text="${row.cess}">-</td>
+        <td th:text="${row.pos}">-</td>
+    </tr>
+</table>
+
+<h3>4C. Supplies through e-commerce (TCS) — GSTIN: <span th:text="${report.outwardData.table4.section4C_ecommerceGstin} ?: 'N/A'">-</span></h3>
+<table>
+    <tr><th>GSTIN</th><th>Invoice No</th><th>Invoice Date</th><th>Invoice Value</th>
+        <th>Taxable Value</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Cess</th><th>POS</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table4.section4C)}">
+        <td class="empty" colspan="10">No records</td>
+    </tr>
+    <tr th:each="row : ${report.outwardData.table4.section4C}">
+        <td th:text="${row.gstin}">-</td>
+        <td th:text="${row.invoiceNo}">-</td>
+        <td th:text="${row.invoiceDate}">-</td>
+        <td th:text="${row.invoiceValue}">-</td>
+        <td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.igst}">-</td>
+        <td th:text="${row.cgst}">-</td>
+        <td th:text="${row.sgst}">-</td>
+        <td th:text="${row.cess}">-</td>
+        <td th:text="${row.pos}">-</td>
+    </tr>
+    <tr class="total-row" th:with="t=${report.outwardData.table4.total}">
+        <td colspan="3" class="label">TOTAL</td>
+        <td th:text="${t.invoiceValue}">-</td>
+        <td th:text="${t.taxableValue}">-</td>
+        <td th:text="${t.igst}">-</td>
+        <td th:text="${t.cgst}">-</td>
+        <td th:text="${t.sgst}">-</td>
+        <td th:text="${t.cess}">-</td>
+        <td>-</td>
+    </tr>
+</table>
+
+<!-- Table 5 -->
+<h2>5. Inter-State supplies to unregistered persons (Invoice &gt; Rs.2.5 lakh)</h2>
+<h3>5A. Other than e-commerce</h3>
+<table>
+    <tr><th>POS</th><th>Invoice No</th><th>Invoice Date</th><th>Invoice Value</th><th>Rate</th><th>Taxable Value</th><th>IGST</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table5.section5A)}">
+        <td class="empty" colspan="7">No records</td>
+    </tr>
+    <tr th:each="row : ${report.outwardData.table5.section5A}">
+        <td th:text="${row.pos}">-</td>
+        <td th:text="${row.invoiceNo}">-</td>
+        <td th:text="${row.invoiceDate}">-</td>
+        <td th:text="${row.invoiceValue}">-</td>
+        <td th:text="${row.rate}">-</td>
+        <td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.igst}">-</td>
+    </tr>
+</table>
+<h3>5B. Through e-commerce (TCS) — GSTIN: <span th:text="${report.outwardData.table5.section5B_ecommerceGstin} ?: 'N/A'">-</span></h3>
+<table>
+    <tr><th>POS</th><th>Invoice No</th><th>Invoice Date</th><th>Invoice Value</th><th>Rate</th><th>Taxable Value</th><th>IGST</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table5.section5B)}">
+        <td class="empty" colspan="7">No records</td>
+    </tr>
+    <tr th:each="row : ${report.outwardData.table5.section5B}">
+        <td th:text="${row.pos}">-</td>
+        <td th:text="${row.invoiceNo}">-</td>
+        <td th:text="${row.invoiceDate}">-</td>
+        <td th:text="${row.invoiceValue}">-</td>
+        <td th:text="${row.rate}">-</td>
+        <td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.igst}">-</td>
+    </tr>
+    <tr class="total-row" th:with="t=${report.outwardData.table5.total}">
+        <td colspan="3" class="label">TOTAL</td>
+        <td th:text="${t.invoiceValue}">-</td>
+        <td>-</td>
+        <td th:text="${t.taxableValue}">-</td>
+        <td th:text="${t.igst}">-</td>
+    </tr>
+</table>
+
+<!-- Table 6 -->
+<h2>6. Zero rated supplies and Deemed Exports</h2>
+<div th:each="entry : ${#maps.entrySet({'6A. Exports': report.outwardData.table6.section6A, '6B. SEZ': report.outwardData.table6.section6B, '6C. Deemed Exports': report.outwardData.table6.section6C})}">
+    <h3 th:text="${entry.key}">6A</h3>
+    <table>
+        <tr><th>GSTIN</th><th>Invoice No</th><th>Invoice Date</th><th>Invoice Value</th>
+            <th>SB No</th><th>SB Date</th><th>Rate</th><th>Taxable Value</th><th>Amount</th></tr>
+        <tr th:if="${#lists.isEmpty(entry.value)}">
+            <td class="empty" colspan="9">No records</td>
+        </tr>
+        <tr th:each="row : ${entry.value}">
+            <td th:text="${row.gstin}">-</td>
+            <td th:text="${row.invoiceNo}">-</td>
+            <td th:text="${row.invoiceDate}">-</td>
+            <td th:text="${row.invoiceValue}">-</td>
+            <td th:text="${row.sbNo}">-</td>
+            <td th:text="${row.sbDate}">-</td>
+            <td th:text="${row.rate}">-</td>
+            <td th:text="${row.taxableValue}">-</td>
+            <td th:text="${row.amt}">-</td>
+        </tr>
+    </table>
+</div>
+
+<!-- Table 7 -->
+<h2>7. Taxable supplies to unregistered persons (net of debit/credit notes)</h2>
+<h3>7A(1). Intra-State — Consolidated</h3>
+<table>
+    <tr><th>Rate</th><th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table7.section7A1)}"><td class="empty" colspan="5">No records</td></tr>
+    <tr th:each="row : ${report.outwardData.table7.section7A1}">
+        <td th:text="${row.rate}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td>
+    </tr>
+</table>
+<h3>7A(2). Intra-State via e-commerce — GSTIN: <span th:text="${report.outwardData.table7.section7A2_ecommerceGstin} ?: 'N/A'">-</span></h3>
+<table>
+    <tr><th>Rate</th><th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table7.section7A2)}"><td class="empty" colspan="5">No records</td></tr>
+    <tr th:each="row : ${report.outwardData.table7.section7A2}">
+        <td th:text="${row.rate}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td>
+    </tr>
+</table>
+<h3>7B(1). Inter-State (up to Rs.2.5L) — POS: <span th:text="${report.outwardData.table7.section7B1_pos} ?: 'N/A'">-</span></h3>
+<table>
+    <tr><th>Rate</th><th>State</th><th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State/UT</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table7.section7B1)}"><td class="empty" colspan="6">No records</td></tr>
+    <tr th:each="row : ${report.outwardData.table7.section7B1}">
+        <td th:text="${row.rate}">-</td><td th:text="${row.stateName}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td>
+    </tr>
+</table>
+<h3>7B(2). Inter-State via e-commerce — GSTIN: <span th:text="${report.outwardData.table7.section7B2_ecommerceGstin} ?: 'N/A'">-</span></h3>
+<table>
+    <tr><th>Rate</th><th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State</th></tr>
+    <tr th:if="${#lists.isEmpty(report.outwardData.table7.section7B2)}"><td class="empty" colspan="5">No records</td></tr>
+    <tr th:each="row : ${report.outwardData.table7.section7B2}">
+        <td th:text="${row.rate}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td>
+    </tr>
+</table>
+
+<!-- Table 8 -->
+<h2>8. Nil rated, exempted and non-GST outward supplies</h2>
+<table>
+    <tr><th>Description</th><th>Nil Rated</th><th>Exempted</th><th>Non-GST</th></tr>
+    <tr th:each="row : ${ {report.outwardData.table8.section8A, report.outwardData.table8.section8B, report.outwardData.table8.section8C, report.outwardData.table8.section8D} }">
+        <td class="label" th:text="${row.label}">-</td>
+        <td th:text="${row.nilRated}">-</td>
+        <td th:text="${row.exempted}">-</td>
+        <td th:text="${row.nonGst}">-</td>
+    </tr>
+    <tr class="total-row" th:with="t=${report.outwardData.table8.total}">
+        <td class="label" th:text="${t.label}">TOTAL</td>
+        <td th:text="${t.nilRated}">-</td>
+        <td th:text="${t.exempted}">-</td>
+        <td th:text="${t.nonGst}">-</td>
+    </tr>
+</table>
+
+<!-- Table 9 -->
+<h2>9. Amendments to outward supplies</h2>
+<div th:each="entry : ${#maps.entrySet({'9A. Invoice/SB amendments': report.amendmentsData.table9.section9A, '9B. Debit/Credit notes (original)': report.amendmentsData.table9.section9B, '9C. Debit/Credit notes (amended)': report.amendmentsData.table9.section9C})}">
+    <h3 th:text="${entry.key}">9A</h3>
+    <table>
+        <tr><th>Orig GSTIN</th><th>Orig Inv No</th><th>Orig Inv Date</th>
+            <th>Rev GSTIN</th><th>Rev Inv No</th><th>Rev Inv Date</th>
+            <th>Value</th><th>Rate</th><th>Taxable Value</th><th>Integrated Tax</th></tr>
+        <tr th:if="${#lists.isEmpty(entry.value)}"><td class="empty" colspan="10">No records</td></tr>
+        <tr th:each="row : ${entry.value}">
+            <td th:text="${row.originalGstin}">-</td>
+            <td th:text="${row.originalInvNo}">-</td>
+            <td th:text="${row.originalInvDate}">-</td>
+            <td th:text="${row.revisedGstin}">-</td>
+            <td th:text="${row.revisedInvNo}">-</td>
+            <td th:text="${row.revisedInvDate}">-</td>
+            <td th:text="${row.value}">-</td>
+            <td th:text="${row.rate}">-</td>
+            <td th:text="${row.taxableValue}">-</td>
+            <td th:text="${row.integratedTax}">-</td>
+        </tr>
+    </table>
+</div>
+
+<!-- Table 10 -->
+<h2>10. Amendments to supplies to unregistered persons</h2>
+<h3>10A. Intra-State</h3>
+<table>
+    <tr><th>Rate</th><th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State</th></tr>
+    <tr th:if="${#lists.isEmpty(report.amendmentsData.table10.section10A)}"><td class="empty" colspan="5">No records</td></tr>
+    <tr th:each="row : ${report.amendmentsData.table10.section10A}">
+        <td th:text="${row.rate}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td>
+    </tr>
+</table>
+<h3>10B. Inter-State — POS: <span th:text="${report.amendmentsData.table10.section10B_pos} ?: 'N/A'">-</span></h3>
+<table>
+    <tr><th>Rate</th><th>State</th><th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State/UT</th></tr>
+    <tr th:if="${#lists.isEmpty(report.amendmentsData.table10.section10B)}"><td class="empty" colspan="6">No records</td></tr>
+    <tr th:each="row : ${report.amendmentsData.table10.section10B}">
+        <td th:text="${row.rate}">-</td><td th:text="${row.stateName}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td>
+    </tr>
+</table>
+
+<!-- Table 11 -->
+<h2>11. Advances Received / Adjusted</h2>
+<div th:each="entry : ${#maps.entrySet({'11A(1). Advance Received — Intra-State': report.advancedData.table11.section11A1, '11A(2). Advance Received — Inter-State': report.advancedData.table11.section11A2, '11B(1). Advance Adjusted — Intra-State': report.advancedData.table11.section11B1, '11B(2). Advance Adjusted — Inter-State': report.advancedData.table11.section11B2})}">
+    <h3 th:text="${entry.key}">11A1</h3>
+    <table>
+        <tr><th>Rate</th><th>Gross Advance</th><th>POS</th><th>Integrated</th><th>Central</th><th>State</th><th>Cess</th></tr>
+        <tr th:if="${#lists.isEmpty(entry.value)}"><td class="empty" colspan="7">No records</td></tr>
+        <tr th:each="row : ${entry.value}">
+            <td th:text="${row.rate}">-</td><td th:text="${row.grossAdvance}">-</td><td th:text="${row.pos}">-</td>
+            <td th:text="${row.integrated}">-</td><td th:text="${row.central}">-</td><td th:text="${row.state}">-</td><td th:text="${row.cess}">-</td>
+        </tr>
+    </table>
+</div>
+<h3>Amendments to earlier-period advances</h3>
+<table>
+    <tr><th>Month</th><th>Relating To</th><th>11A(1)</th><th>11A(2)</th><th>11B(1)</th><th>11B(2)</th></tr>
+    <tr th:if="${#lists.isEmpty(report.advancedData.table11.amendments)}"><td class="empty" colspan="6">No records</td></tr>
+    <tr th:each="row : ${report.advancedData.table11.amendments}">
+        <td th:text="${row.month}">-</td><td th:text="${row.amendmentRelatingTo}">-</td>
+        <td th:text="${row.val11A1}">-</td><td th:text="${row.val11A2}">-</td>
+        <td th:text="${row.val11B1}">-</td><td th:text="${row.val11B2}">-</td>
+    </tr>
+</table>
+
+<!-- Table 12 -->
+<h2>12. HSN-wise summary</h2>
+<table>
+    <tr><th>HSN</th><th>Description</th><th>UQC</th><th>Total Qty</th><th>Total Value</th>
+        <th>Taxable Value</th><th>Integrated</th><th>Central</th><th>State</th><th>Cess</th></tr>
+    <tr th:if="${#lists.isEmpty(report.othersData.table12.records)}"><td class="empty" colspan="10">No records</td></tr>
+    <tr th:each="row : ${report.othersData.table12.records}">
+        <td th:text="${row.hsn}">-</td><td class="label" th:text="${row.description}">-</td><td th:text="${row.uqc}">-</td>
+        <td th:text="${row.totalQuantity}">-</td><td th:text="${row.totalValue}">-</td><td th:text="${row.taxableValue}">-</td>
+        <td th:text="${row.integratedTax}">-</td><td th:text="${row.centralTax}">-</td><td th:text="${row.stateTax}">-</td><td th:text="${row.cess}">-</td>
+    </tr>
+    <tr class="total-row" th:with="t=${report.othersData.table12.total}">
+        <td colspan="3" class="label">TOTAL</td>
+        <td th:text="${t.totalQuantity}">-</td><td th:text="${t.totalValue}">-</td><td th:text="${t.taxableValue}">-</td>
+        <td th:text="${t.integratedTax}">-</td><td th:text="${t.centralTax}">-</td><td th:text="${t.stateTax}">-</td><td th:text="${t.cess}">-</td>
+    </tr>
+</table>
+
+<!-- Table 13 -->
+<h2>13. Documents issued during the tax period</h2>
+<table>
+    <tr><th>Nature of Document</th><th>From</th><th>To</th><th>Total Number</th><th>Cancelled</th><th>Net Issued</th></tr>
+    <tr th:if="${#lists.isEmpty(report.othersData.table13.records)}"><td class="empty" colspan="6">No records</td></tr>
+    <tr th:each="row : ${report.othersData.table13.records}">
+        <td class="label" th:text="${row.natureOfDocument}">-</td>
+        <td th:text="${row.from}">-</td><td th:text="${row.to}">-</td>
+        <td th:text="${row.totalNumber}">-</td><td th:text="${row.cancelled}">-</td><td th:text="${row.netIssued}">-</td>
+    </tr>
+</table>
+
+</body>
+</html>

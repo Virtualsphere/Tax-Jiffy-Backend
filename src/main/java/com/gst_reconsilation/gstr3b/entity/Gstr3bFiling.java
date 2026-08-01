@@ -56,17 +56,14 @@ public class Gstr3bFiling {
     @Builder.Default
     private String filingStatus = "DRAFT";
 
-    @Column(name = "ims_sync_status", length = 20)
-    private String imsSyncStatus;
-
-    @Column(name = "ims_synced_at")
-    private LocalDateTime imsSyncedAt;
-
     @Column(name = "two_b_sync_status", length = 20)
     private String twoBSyncStatus;
 
     @Column(name = "two_b_synced_at")
     private LocalDateTime twoBSyncedAt;
+
+    @Column(name = "ims_filing_id")
+    private Integer imsFilingId;
 
     // ── Manual entries (table 5.1 - Interest & Late Fee) ────────────
     // Real-time interest/late-fee calculation depends on payment ledgers this

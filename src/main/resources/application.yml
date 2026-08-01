@@ -41,6 +41,18 @@ gstr1:
   api:
     base-url: https://apisandbox.whitebooks.in/gstr1
 
+gst:
+  api:
+    email: Shekhupoonia@gmail.com
+    gst-username: MH_NT2.1641
+    state-cd: "27"
+    ip-address: 49.37.135.42
+    client-id: ${GST_CLIENT_ID}
+    client-secret: ${GST_CLIENT_SECRET}
+    einvoice-base-url: https://apisandbox.whitebooks.in/gst/einvoice
+    ewaybill-base-url: https://apisandbox.whitebooks.in/ewaybillapi/v1.03/ewayapi
+    ims-base-url: https://apisandbox.whitebooks.in/ims
+
 app:
   excel:
     upload-dir: /home/aditya/uploads/excel

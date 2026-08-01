@@ -1,30 +1,25 @@
-package com.gst_reconsilation.gstr3b.entity;
+// ims/entity/ImsInvoice.java
+package com.gst_reconsilation.ims.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * One flattened row per supplier-reported invoice/note returned by the IMS
- * (Invoice Management System) API - GET /ims/supplierinvoices.
- * Covers both the "gstr1" (as-filed) and "gstr1a" (post-filing amendment) blocks,
- * and every section within them (b2b, b2ba, cdnr, cdnra, ecom.b2b, ecom.urp2b,
- * ecoma.b2ba, ecoma.urp2ba) - {@link #source} and {@link #section} record which.
+ * One flattened row per supplier-reported invoice/note — same shape as the old
+ * Gstr3bImsInvoice, now owned by its own module instead of gstr3b, and reachable
+ * via three intake paths (see {@link #source}) instead of just the live API.
  */
 @Entity
-@Table(name = "gstr3b_ims_invoice",
+@Table(name = "ims_invoices",
         indexes = {
-                @Index(name = "idx_ims_filing", columnList = "filing_id"),
-                @Index(name = "idx_ims_supplier", columnList = "supplier_gstin"),
-                @Index(name = "idx_ims_invoice", columnList = "invoice_number")
+                @Index(name = "idx_ims_inv_filing", columnList = "filing_id"),
+                @Index(name = "idx_ims_inv_supplier", columnList = "supplier_gstin"),
+                @Index(name = "idx_ims_inv_number", columnList = "invoice_number")
         })
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Gstr3bImsInvoice {
+@Data @NoArgsConstructor @AllArgsConstructor @Builder
+public class ImsInvoice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,14 +27,14 @@ public class Gstr3bImsInvoice {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "filing_id")
-    private Gstr3bFiling filing;
+    private ImsFiling filing;
 
     @Column(name = "created_by", nullable = false)
     private Integer createdBy;
 
-    /** "GSTR1" or "GSTR1A" */
-    @Column(name = "source", length = 10, nullable = false)
-    private String source;
+    /** GSTR1 or GSTR1A — null when the row came from MANUAL or EXCEL intake, since those don't distinguish. */
+    @Column(name = "gstr_source", length = 10)
+    private String gstrSource;
 
     /** B2B / B2BA / CDNR / CDNRA / ECOM_B2B / ECOM_URP2B / ECOMA_B2BA / ECOMA_URP2BA */
     @Column(name = "section", length = 20, nullable = false)
@@ -48,7 +43,6 @@ public class Gstr3bImsInvoice {
     @Column(name = "supplier_gstin", length = 15)
     private String supplierGstin;
 
-    /** Populated for ecom rows: rtin = registered recipient GSTIN, stin = e-com operator GSTIN */
     @Column(name = "recipient_gstin", length = 15)
     private String recipientGstin;
 
@@ -70,7 +64,7 @@ public class Gstr3bImsInvoice {
     @Column(name = "invoice_value", precision = 18, scale = 2)
     private BigDecimal invoiceValue;
 
-    @Column(name = "place_of_supply", length = 10)
+    @Column(name = "place_of_supply", length = 50)
     private String placeOfSupply;
 
     @Column(name = "invoice_type", length = 20)
@@ -102,12 +96,17 @@ public class Gstr3bImsInvoice {
     @Builder.Default
     private BigDecimal cess = BigDecimal.ZERO;
 
-    /** Raw IMS action code: A = Accepted, R = Rejected, P = Pending (no action taken) */
-    @Column(name = "ims_action", length = 1)
+    /** Raw IMS action: ACCEPTED / REJECTED / PENDING */
+    @Column(name = "ims_action", length = 20)
     private String imsAction;
 
     @Column(name = "remarks", length = 255)
     private String remarks;
+
+    /** SYNC (live API) | MANUAL (single POST) | EXCEL (bulk template upload) */
+    @Column(name = "source", length = 10, nullable = false)
+    @Builder.Default
+    private String source = "SYNC";
 
     @Column(name = "created_date", nullable = false)
     @Builder.Default
