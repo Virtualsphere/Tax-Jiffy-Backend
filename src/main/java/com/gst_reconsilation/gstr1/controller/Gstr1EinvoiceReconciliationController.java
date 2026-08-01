@@ -31,10 +31,12 @@ public class Gstr1EinvoiceReconciliationController {
     /** Sync e-invoice data for this filing's derived period + run reconciliation. */
     @PostMapping("/sync")
     public ResponseEntity<ApiResponse<Map<String, Object>>> sync(
-            @PathVariable Integer filingId, Authentication auth) {
+            @PathVariable Integer filingId,
+            @RequestParam(required = false, defaultValue = "false") boolean force,
+            Authentication auth) {
         Integer userId = (Integer) auth.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success("Sync + reconciliation complete",
-                reconciliationService.syncAndReconcile(filingId, userId)));
+                reconciliationService.syncAndReconcile(filingId, userId, force)));
     }
 
     /** Sale-register rows — each row's isPaired flag is what the frontend highlights on. */

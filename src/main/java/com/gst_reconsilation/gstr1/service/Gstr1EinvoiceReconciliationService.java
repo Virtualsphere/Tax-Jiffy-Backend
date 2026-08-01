@@ -58,22 +58,36 @@ public class Gstr1EinvoiceReconciliationService {
      * rows and already-known IRNs are never duplicated or wiped), then re-runs the match.
      */
     @Transactional
-    public Map<String, Object> syncAndReconcile(Integer gstr1FilingId, Integer userId) {
+    public Map<String, Object> syncAndReconcile(Integer gstr1FilingId, Integer userId, boolean force) {
         Gstr1Filing filing = filingRepository.findById(gstr1FilingId)
                 .orElseThrow(() -> new RuntimeException("Gstr1Filing not found: " + gstr1FilingId));
 
         String retPeriod = deriveRetPeriod(filing.getFinancialYear(), filing.getTaxPeriod());
 
-        EinvoiceSyncRequest req = new EinvoiceSyncRequest();
-        req.setCompanyGstId(filing.getCompanyGST().getId());
-        req.setRetPeriod(retPeriod);
+        List<Gstr1B2b> saleRegisterRows = b2bRepository.findByFiling_Id(gstr1FilingId);
+        boolean allAlreadyPaired = !saleRegisterRows.isEmpty()
+                && saleRegisterRows.stream().allMatch(Gstr1B2b::getIsPaired);
 
-        EinvoiceSyncResponse syncResult = einvoiceSyncService.sync(req, userId);
+        // Skip the government API call only when everything is already matched
+        // AND the caller hasn't explicitly asked for a forced refresh (e.g. to
+        // pick up a cancellation/status change on an already-paired IRN).
+        boolean calledApi = force || !allAlreadyPaired;
+
+        int einvoiceRowsSynced = 0;
+        if (calledApi) {
+            EinvoiceSyncRequest req = new EinvoiceSyncRequest();
+            req.setCompanyGstId(filing.getCompanyGST().getId());
+            req.setRetPeriod(retPeriod);
+            EinvoiceSyncResponse syncResult = einvoiceSyncService.sync(req, userId);
+            einvoiceRowsSynced = syncResult.getIrnRowsSynced();
+        }
+
         List<Gstr1EinvoiceReconciliationResult> results = reconcile(filing);
 
         Map<String, Object> summary = new HashMap<>();
         summary.put("retPeriod", retPeriod);
-        summary.put("einvoiceRowsSynced", syncResult.getIrnRowsSynced());
+        summary.put("calledGovernmentApi", calledApi);
+        summary.put("einvoiceRowsSynced", einvoiceRowsSynced);
         summary.put("reconciledCount", results.size());
         return summary;
     }
@@ -131,12 +145,12 @@ public class Gstr1EinvoiceReconciliationService {
                 b2bToUpdate.add(sr);
                 irnToUpdate.add(ei);
             } else if (sr != null) {
-                status = "IN_SALE_REGISTER_ONLY"; // booked, no e-invoice raised yet
+                status = "IN_SALE_REGISTER_ONLY";
                 sr.setIsPaired(false);
                 sr.setPairedIrn(null);
                 b2bToUpdate.add(sr);
             } else {
-                status = "IN_EINVOICE_ONLY"; // e-invoiced, missing from the uploaded register
+                status = "IN_EINVOICE_ONLY";
                 ei.setIsPaired(false);
                 ei.setPairedGstr1B2bId(null);
                 irnToUpdate.add(ei);
