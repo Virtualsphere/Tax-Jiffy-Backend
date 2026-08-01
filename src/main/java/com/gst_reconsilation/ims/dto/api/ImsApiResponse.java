@@ -1,4 +1,4 @@
-package com.gst_reconsilation.gstr3b.dto.api;
+package com.gst_reconsilation.ims.dto.api;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
