@@ -3,6 +3,7 @@ package com.gst_reconsilation.einvoice.controller;
 
 import com.gst_reconsilation.config.dto.ApiResponse;
 import com.gst_reconsilation.einvoice.dto.*;
+import com.gst_reconsilation.einvoice.entity.EinvoiceFiling;
 import com.gst_reconsilation.einvoice.entity.EinvoiceHsnSummary;
 import com.gst_reconsilation.einvoice.entity.EinvoiceIrn;
 import com.gst_reconsilation.einvoice.service.EinvoiceSyncService;
@@ -41,6 +42,13 @@ public class EinvoiceController {
             @RequestBody EinvoiceIrnManualRequest req, Authentication auth) {
         Integer userId = (Integer) auth.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success("Created", service.createManual(req, userId)));
+    }
+
+    @GetMapping("/filings")
+    public ResponseEntity<ApiResponse<EinvoiceFiling>> getFiling(
+            @RequestParam Integer companyGstId, @RequestParam String retPeriod) {
+        return ResponseEntity.ok(ApiResponse.success("OK",
+                service.getFiling(companyGstId, retPeriod).orElse(null)));
     }
 
     @GetMapping("/filings/{filingId}/irns")

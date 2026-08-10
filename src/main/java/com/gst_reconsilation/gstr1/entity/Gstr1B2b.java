@@ -79,4 +79,8 @@ public class Gstr1B2b {
 
     @Column(name = "paired_irn", length = 100)
     private String pairedIrn;
+
+    /** E-way bill number this invoice was matched into during e-way bill reconciliation, if any. */
+    @Column(name = "paired_ewb_no")
+    private Long pairedEwbNo;
 }
