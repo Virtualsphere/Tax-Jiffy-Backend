@@ -20,6 +20,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -243,6 +244,10 @@ public class EinvoiceSyncService {
 
     public List<EinvoiceIrn> getIrnsByFiling(Integer filingId) {
         return irnRepository.findByFiling_Id(filingId);
+    }
+
+    public Optional<EinvoiceFiling> getFiling(Integer companyGstId, String retPeriod) {
+        return filingRepository.findByCompanyGST_IdAndRetPeriod(companyGstId, retPeriod);
     }
 
     public List<EinvoiceHsnSummary> getHsnByFiling(Integer filingId) {
