@@ -65,8 +65,10 @@ public class EwaybillSyncService {
             int count = 0;
             if (summary != null) {
                 for (var s : summary) {
-                    // Skip re-fetching full detail for e-way bills already stored, unless status changed.
-                    if (recordRepository.existsByEwbNo(s.getEwbNo())) continue;
+                    // Skip re-fetching full detail for e-way bills already stored under this same
+                    // GSTIN+date filing (a re-sync); don't skip just because the same EWB number
+                    // exists under a different company/date filing.
+                    if (recordRepository.existsByFiling_IdAndEwbNo(filing.getId(), s.getEwbNo())) continue;
                     fetchAndSaveDetail(s.getEwbNo(), companyGST, filing, userId);
                     count++;
                 }
@@ -106,7 +108,11 @@ public class EwaybillSyncService {
 
         if (d == null) throw new RuntimeException("No response from e-way bill API for ewbNo: " + ewbNo);
 
-        EwaybillRecord record = recordRepository.findByEwbNo(ewbNo)
+        // Scope the upsert lookup to this filing when one is known (batch sync); syncSingle() passes
+        // filing=null since it isn't tied to a date-filing, so fall back to a global lookup there.
+        EwaybillRecord record = (filing != null
+                ? recordRepository.findByFiling_IdAndEwbNo(filing.getId(), ewbNo)
+                : recordRepository.findByEwbNo(ewbNo))
                 .orElseGet(() -> EwaybillRecord.builder().ewbNo(ewbNo).createdBy(userId).build());
 
         record.setFiling(filing);
@@ -215,6 +221,17 @@ public class EwaybillSyncService {
         try (var is = file.getInputStream()) {
             parsed = excelParserService.parse(is, filing, userId);
         }
+
+        EwaybillFiling finalFiling = filing;
+        List<String> duplicateEwbNos = parsed.stream()
+                .map(EwaybillRecord::getEwbNo)
+                .filter(ewbNo -> recordRepository.existsByFiling_IdAndEwbNo(finalFiling.getId(), ewbNo))
+                .map(String::valueOf)
+                .toList();
+        if (!duplicateEwbNos.isEmpty()) {
+            throw new RuntimeException("These e-way bill numbers already exist for this GSTIN and sync date: " + String.join(", ", duplicateEwbNos));
+        }
+
         recordRepository.saveAll(parsed);
 
         filing.setSyncStatus("EXCEL");

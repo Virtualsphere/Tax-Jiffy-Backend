@@ -10,6 +10,10 @@ import java.util.Optional;
 @Repository
 public interface EinvoiceIrnRepository extends JpaRepository<EinvoiceIrn, Integer> {
     List<EinvoiceIrn> findByFiling_Id(Integer filingId);
-    Optional<EinvoiceIrn> findByIrn(String irn);
-    boolean existsByIrn(String irn);
+
+    /** Global lookup used only where no filing context is available (e.g. on-demand detail fetch by IRN alone). */
+    Optional<EinvoiceIrn> findFirstByIrnOrderByIdDesc(String irn);
+
+    Optional<EinvoiceIrn> findByFiling_IdAndIrn(Integer filingId, String irn);
+    boolean existsByFiling_IdAndIrn(Integer filingId, String irn);
 }

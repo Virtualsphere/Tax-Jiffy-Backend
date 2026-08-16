@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "einvoice_irn",
-        uniqueConstraints = @UniqueConstraint(name = "UQ_einvoice_irn", columnNames = "irn"),
+        uniqueConstraints = @UniqueConstraint(name = "UQ_einvoice_filing_irn", columnNames = {"filing_id", "irn"}),
         indexes = @Index(name = "idx_irn_filing", columnList = "filing_id"))
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class EinvoiceIrn {
