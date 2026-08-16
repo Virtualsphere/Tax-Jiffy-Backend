@@ -72,7 +72,7 @@ public class EinvoiceSyncService {
     /** On-demand: fetch the full signed invoice/QR payload for one IRN and persist it onto the existing row. */
     @Transactional
     public EinvoiceIrn fetchAndStoreIrnDetail(String irn) {
-        EinvoiceIrn existing = irnRepository.findByIrn(irn)
+        EinvoiceIrn existing = irnRepository.findFirstByIrnOrderByIdDesc(irn)
                 .orElseThrow(() -> new RuntimeException("IRN not found in database: " + irn + ". Sync the period first."));
 
         String gstin = existing.getSupplierGstin();
@@ -157,8 +157,9 @@ public class EinvoiceSyncService {
             for (var block : resp.getIrnList()) {
                 if (block.getIrnDtl() == null) continue;
                 for (var e : block.getIrnDtl()) {
-                    // Upsert by IRN so a re-sync updates status (e.g. ACT -> CNL) instead of duplicating.
-                    EinvoiceIrn row = irnRepository.findByIrn(e.getIrn())
+                    // Upsert by (filing, IRN) so a re-sync of this period updates status (e.g. ACT -> CNL)
+                    // instead of duplicating, without colliding with the same IRN under another filing.
+                    EinvoiceIrn row = irnRepository.findByFiling_IdAndIrn(filing.getId(), e.getIrn())
                             .orElseGet(() -> EinvoiceIrn.builder().irn(e.getIrn()).createdBy(userId).build());
 
                     row.setFiling(filing);
@@ -203,10 +204,6 @@ public class EinvoiceSyncService {
         CompanyGST companyGST = companyGSTRepository.findById(req.getCompanyGstId())
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + req.getCompanyGstId()));
 
-        if (req.getIrn() != null && irnRepository.existsByIrn(req.getIrn())) {
-            throw new RuntimeException("An e-invoice record with this IRN already exists: " + req.getIrn());
-        }
-
         EinvoiceFiling filing = filingRepository
                 .findByCompanyGST_IdAndRetPeriod(req.getCompanyGstId(), req.getRetPeriod())
                 .orElseGet(() -> filingRepository.save(EinvoiceFiling.builder()
@@ -215,6 +212,10 @@ public class EinvoiceSyncService {
                         .syncStatus("MANUAL")
                         .createdBy(userId)
                         .build()));
+
+        if (req.getIrn() != null && irnRepository.existsByFiling_IdAndIrn(filing.getId(), req.getIrn())) {
+            throw new RuntimeException("An e-invoice record with this IRN already exists for this GSTIN and return period: " + req.getIrn());
+        }
 
         EinvoiceIrn irn = EinvoiceIrn.builder()
                 .filing(filing)
@@ -273,6 +274,16 @@ public class EinvoiceSyncService {
         try (var is = file.getInputStream()) {
             parsed = excelParserService.parse(is, filing, userId);
         }
+
+        Integer finalFilingId = filing.getId();
+        List<String> duplicateIrns = parsed.stream()
+                .map(EinvoiceIrn::getIrn)
+                .filter(irn -> irnRepository.existsByFiling_IdAndIrn(finalFilingId, irn))
+                .toList();
+        if (!duplicateIrns.isEmpty()) {
+            throw new RuntimeException("These IRNs already exist for this GSTIN and return period: " + String.join(", ", duplicateIrns));
+        }
+
         int rows = irnRepository.saveAll(parsed).size();
 
         filing.setSyncStatus("EXCEL");

@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "ewaybill_records",
-        uniqueConstraints = @UniqueConstraint(name = "UQ_ewaybill_ewbno", columnNames = "ewb_no"),
+        uniqueConstraints = @UniqueConstraint(name = "UQ_ewaybill_filing_ewbno", columnNames = {"filing_id", "ewb_no"}),
         indexes = @Index(name = "idx_ewb_filing", columnList = "filing_id"))
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class EwaybillRecord {

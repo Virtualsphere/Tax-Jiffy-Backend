@@ -10,8 +10,13 @@ import java.util.Optional;
 @Repository
 public interface EwaybillRecordRepository extends JpaRepository<EwaybillRecord, Integer> {
     List<EwaybillRecord> findByFiling_Id(Integer filingId);
+
+    /** Global lookup used only where no filing context is available (e.g. manual entry, single-EWB sync). */
     Optional<EwaybillRecord> findByEwbNo(Long ewbNo);
     boolean existsByEwbNo(Long ewbNo);
+
+    Optional<EwaybillRecord> findByFiling_IdAndEwbNo(Integer filingId, Long ewbNo);
+    boolean existsByFiling_IdAndEwbNo(Integer filingId, Long ewbNo);
 
     /** All e-way bills ever synced/uploaded for a company, across every sync-date batch — filtered
      *  by month in the service layer since e-way bills are stored per sync date, not per GST period. */
