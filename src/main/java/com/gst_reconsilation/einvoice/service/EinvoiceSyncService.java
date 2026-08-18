@@ -20,8 +20,10 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -273,6 +275,16 @@ public class EinvoiceSyncService {
         List<EinvoiceIrn> parsed;
         try (var is = file.getInputStream()) {
             parsed = excelParserService.parse(is, filing, userId);
+        }
+
+        List<String> duplicatesWithinFile = parsed.stream()
+                .collect(Collectors.groupingBy(EinvoiceIrn::getIrn, Collectors.counting()))
+                .entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .map(Map.Entry::getKey)
+                .toList();
+        if (!duplicatesWithinFile.isEmpty()) {
+            throw new RuntimeException("This file has the same IRN in more than one row: " + String.join(", ", duplicatesWithinFile));
         }
 
         Integer finalFilingId = filing.getId();
