@@ -19,6 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -220,6 +221,16 @@ public class EwaybillSyncService {
         List<EwaybillRecord> parsed;
         try (var is = file.getInputStream()) {
             parsed = excelParserService.parse(is, filing, userId);
+        }
+
+        List<String> duplicatesWithinFile = parsed.stream()
+                .collect(Collectors.groupingBy(EwaybillRecord::getEwbNo, Collectors.counting()))
+                .entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .map(e -> String.valueOf(e.getKey()))
+                .toList();
+        if (!duplicatesWithinFile.isEmpty()) {
+            throw new RuntimeException("This file has the same e-way bill number in more than one row: " + String.join(", ", duplicatesWithinFile));
         }
 
         EwaybillFiling finalFiling = filing;
