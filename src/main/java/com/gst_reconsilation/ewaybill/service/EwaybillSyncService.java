@@ -19,6 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -198,6 +199,11 @@ public class EwaybillSyncService {
 
     public List<EwaybillRecord> getByFiling(Integer filingId) {
         return recordRepository.findByFiling_Id(filingId);
+    }
+
+    /** Look a filing up by company + sync date, so a stored period can be reopened without re-syncing. */
+    public Optional<EwaybillFiling> getFiling(Integer companyGstId, String syncDate) {
+        return filingRepository.findByCompanyGST_IdAndSyncDate(companyGstId, syncDate);
     }
 
     // EwaybillSyncService.java — add these fields + method

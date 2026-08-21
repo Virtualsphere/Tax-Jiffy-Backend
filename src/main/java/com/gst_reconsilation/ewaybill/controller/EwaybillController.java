@@ -45,6 +45,13 @@ public class EwaybillController {
         return ResponseEntity.ok(ApiResponse.success("Created", service.createManual(req, userId)));
     }
 
+    @GetMapping("/filings")
+    public ResponseEntity<ApiResponse<EwaybillFiling>> getFiling(
+            @RequestParam Integer companyGstId, @RequestParam String syncDate) {
+        return ResponseEntity.ok(ApiResponse.success("OK",
+                service.getFiling(companyGstId, syncDate).orElse(null)));
+    }
+
     @GetMapping("/filings/{filingId}/records")
     public ResponseEntity<ApiResponse<List<EwaybillRecord>>> getByFiling(@PathVariable Integer filingId) {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getByFiling(filingId)));
