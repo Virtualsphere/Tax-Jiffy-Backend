@@ -48,4 +48,10 @@ public class ImsController {
     public ResponseEntity<ApiResponse<List<ImsInvoice>>> getByFiling(@PathVariable Integer filingId) {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getByFiling(filingId)));
     }
+
+    @GetMapping("/filings")
+    public ResponseEntity<ApiResponse<com.gst_reconsilation.ims.entity.ImsFiling>> getFiling(
+            @RequestParam Integer companyGstId, @RequestParam String retPeriod) {
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getFiling(companyGstId, retPeriod).orElse(null)));
+    }
 }

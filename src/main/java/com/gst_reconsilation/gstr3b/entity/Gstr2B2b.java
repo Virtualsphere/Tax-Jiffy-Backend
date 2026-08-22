@@ -95,4 +95,31 @@ public class Gstr2B2b {
     @Column(name = "created_date", nullable = false)
     @Builder.Default
     private LocalDate createdDate = LocalDate.now();
+
+    // ── GSTR-2B ⇄ IMS reconciliation correction tracking ──
+    // First-touch snapshot of the as-uploaded value, populated only once, the first time
+    // this row is corrected — mirrors the isPaired/pairedIrn convention already used on
+    // Gstr1B2b for its own reconciliation flow.
+    @Column(name = "original_taxable_value", precision = 18, scale = 2)
+    private BigDecimal originalTaxableValue;
+    @Column(name = "original_integrated_tax_paid", precision = 18, scale = 2)
+    private BigDecimal originalIntegratedTaxPaid;
+    @Column(name = "original_central_tax_paid", precision = 18, scale = 2)
+    private BigDecimal originalCentralTaxPaid;
+    @Column(name = "original_state_ut_tax_paid", precision = 18, scale = 2)
+    private BigDecimal originalStateUtTaxPaid;
+    @Column(name = "original_cess_paid", precision = 18, scale = 2)
+    private BigDecimal originalCessPaid;
+
+    @Column(name = "is_edited", nullable = false)
+    @Builder.Default
+    private boolean edited = false;
+
+    /** ACCEPT / REJECT / PENDING — the user's GSTR-2B ⇄ IMS reconciliation decision for this row. */
+    @Column(name = "reconciliation_action", length = 10, nullable = false)
+    @Builder.Default
+    private String reconciliationAction = "PENDING";
+
+    @Column(name = "reconciliation_remarks", length = 255)
+    private String reconciliationRemarks;
 }
