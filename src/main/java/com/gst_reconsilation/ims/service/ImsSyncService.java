@@ -280,6 +280,14 @@ public class ImsSyncService {
 
     public List<ImsInvoice> getByFiling(Integer filingId) { return invoiceRepository.findByFiling_Id(filingId); }
 
+    /**
+     * Looks up the filing for a (companyGstId, retPeriod) pair without knowing its numeric id —
+     * the hop a caller needs before it can fetch invoices for a period it didn't just upload/sync.
+     */
+    public java.util.Optional<ImsFiling> getFiling(Integer companyGstId, String retPeriod) {
+        return filingRepository.findByCompanyGST_IdAndRetPeriod(companyGstId, retPeriod);
+    }
+
     private java.math.BigDecimal nz(java.math.BigDecimal v) { return v != null ? v : java.math.BigDecimal.ZERO; }
     private String upper(String s) { return s != null ? s.toUpperCase() : null; }
     private LocalDate parseDate(String s) {
