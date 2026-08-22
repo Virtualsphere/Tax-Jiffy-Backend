@@ -1,5 +1,6 @@
 package com.gst_reconsilation.gstr1.service;
 
+import com.gst_reconsilation.ewaybill.entity.EwaybillFiling;
 import com.gst_reconsilation.ewaybill.entity.EwaybillRecord;
 import com.gst_reconsilation.ewaybill.repository.EwaybillRecordRepository;
 import com.gst_reconsilation.gstr1.entity.Gstr1B2b;
@@ -51,7 +52,18 @@ public class Gstr1EwaybillReconciliationService {
             Map.entry("OCTOBER", 10), Map.entry("NOVEMBER", 11), Map.entry("DECEMBER", 12)
     );
 
-    private static final DateTimeFormatter API_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    /**
+     * Both date shapes are present in {@code ewaybill_record}, so both have to parse here:
+     * the Excel-upload path normalizes to dd-MM-yyyy, while the sync path stores the government
+     * API's own strings verbatim ("dd/MM/yyyy HH:mm:ss a" — see {@code EwaybillExcelParserService}).
+     * Parsing only dd-MM-yyyy silently dropped every synced e-way bill from the period filter,
+     * which left the whole sale register looking IN_SALE_REGISTER_ONLY.
+     */
+    private static final List<DateTimeFormatter> DATE_FMTS = List.of(
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    );
 
     /** Re-runs the bucket match for this filing against whatever e-way bill data already exists
      *  (synced or Excel-uploaded via the E-Way Bill page) for the filing's GSTIN + period. */
@@ -98,7 +110,11 @@ public class Gstr1EwaybillReconciliationService {
                     .map(Gstr1B2b::getInvoiceValue)
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal ewbValue = nz(ewb.getTotalValue());
+            // totalValue is the taxable value while Gstr1B2b.invoiceValue is tax-inclusive, so
+            // comparing the two left the bucket remainder permanently non-zero and every
+            // correctly-covered e-way bill stuck in VALUE_MISMATCH. totInvValue is the
+            // like-for-like figure; fall back to totalValue only when it was never populated.
+            BigDecimal ewbValue = ewb.getTotInvValue() != null ? ewb.getTotInvValue() : nz(ewb.getTotalValue());
             BigDecimal diff = ewbValue.subtract(sumMatched);
 
             String status;
@@ -167,19 +183,41 @@ public class Gstr1EwaybillReconciliationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * A bill counts for the period if its own document date says so, or — when that date is missing,
+     * unparseable, or simply disagrees — if it was imported under that period's filing.
+     *
+     * Judging by the record date alone silently dropped every e-way bill the E-Way Bill page lists
+     * for the period, so the whole sale register came back IN_SALE_REGISTER_ONLY and re-running
+     * Reconcile could never change that: the same filter skipped the same rows every time. Bills are
+     * imported per sync-date filing, so that filing is the accountant's own statement of which period
+     * they belong to, and is trusted here as a fallback.
+     */
     private boolean matchesPeriod(EwaybillRecord r, int year, int month) {
         LocalDate d = parseDate(r.getDocDate());
         if (d == null) d = parseDate(r.getEwbDate());
+        if (d != null && d.getYear() == year && d.getMonthValue() == month) return true;
+        return filingCoversPeriod(r.getFiling(), year, month);
+    }
+
+    /** syncDate is a free-form string — "2026-02-01" is what the app writes, "01/02/2026" is what
+     *  this entity's own contract documents — so lean on parseDate rather than assuming one shape. */
+    private boolean filingCoversPeriod(EwaybillFiling f, int year, int month) {
+        if (f == null) return false;
+        LocalDate d = parseDate(f.getSyncDate());
         return d != null && d.getYear() == year && d.getMonthValue() == month;
     }
 
     private LocalDate parseDate(String s) {
         if (s == null || s.isBlank()) return null;
-        try {
-            return LocalDate.parse(s.trim(), API_DATE);
-        } catch (Exception e) {
-            return null;
+        // Drop any trailing time component ("15/02/2026 03:30:00 PM") before parsing the date.
+        String datePart = s.trim().split("\\s+")[0];
+        for (DateTimeFormatter fmt : DATE_FMTS) {
+            try {
+                return LocalDate.parse(datePart, fmt);
+            } catch (Exception ignored) {}
         }
+        return null;
     }
 
     /** "2025-26" + "October" -> [2025, 10]; Jan-Mar fall in the FY's second calendar year. */
