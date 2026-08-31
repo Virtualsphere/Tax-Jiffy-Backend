@@ -38,6 +38,12 @@ public class CompanyGSTController {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getByCompany(companyId)));
     }
 
+    /** Active + deactivated GST numbers for this company — backs the Billing page's subscription history. */
+    @GetMapping("/by-company/{companyId}/all")
+    public ResponseEntity<ApiResponse<List<CompanyGSTResponse>>> getAllByCompany(@PathVariable Integer companyId) {
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getAllByCompany(companyId)));
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<CompanyGSTResponse>> update(
             @PathVariable Integer id,
