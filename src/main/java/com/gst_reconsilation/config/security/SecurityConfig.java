@@ -26,6 +26,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/users/register").permitAll()
+                        // The WS handshake carries no Bearer header (JWT travels as a STOMP CONNECT
+                        // header instead, authenticated by StompAuthChannelInterceptor) — permit the
+                        // handshake itself here, the STOMP layer is what actually gates it.
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

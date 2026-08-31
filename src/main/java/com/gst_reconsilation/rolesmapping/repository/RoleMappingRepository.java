@@ -11,4 +11,5 @@ public interface RoleMappingRepository extends JpaRepository<RoleMapping, Intege
     List<RoleMapping> findByCompanyGST_Id(Integer companyGstId);
     List<RoleMapping> findByCompany_Id(Integer companyId);
     boolean existsByRole_IdAndCompanyGST_IdAndPageNumber(Integer roleId, Integer companyGstId, String pageNumber);
+    long countByCompanyGST_Id(Integer companyGstId);
 }

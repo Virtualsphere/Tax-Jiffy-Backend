@@ -1,6 +1,8 @@
 // einvoice/service/EinvoiceSyncService.java
 package com.gst_reconsilation.einvoice.service;
 
+import com.gst_reconsilation.apiusage.exception.ApiUsageLimitExceededException;
+import com.gst_reconsilation.apiusage.service.ApiUsageService;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.config.GstApiCredentialsProperties;
@@ -37,6 +39,7 @@ public class EinvoiceSyncService {
     private final RestTemplate restTemplate;
     private final GstApiCredentialsProperties creds;
     private final EinvoiceExcelParserService excelParserService;
+    private final ApiUsageService apiUsageService;
 
     @Transactional
     public EinvoiceSyncResponse sync(EinvoiceSyncRequest req, Integer userId) {
@@ -55,8 +58,15 @@ public class EinvoiceSyncService {
         filing = filingRepository.save(filing);
 
         hsnRepository.deleteByFiling_Id(filing.getId());
-        int hsnRows = syncHsnSummary(filing, companyGST.getGstNumber());
-        int irnRows = syncIrnList(filing, companyGST.getGstNumber(), userId);
+        int hsnRows, irnRows;
+        try {
+            hsnRows = syncHsnSummary(filing, companyGST.getId(), companyGST.getGstNumber());
+            irnRows = syncIrnList(filing, companyGST.getId(), companyGST.getGstNumber(), userId);
+        } catch (ApiUsageLimitExceededException e) {
+            filing.setSyncStatus("FAILED");
+            filingRepository.save(filing);
+            throw e;
+        }
 
         filing.setSyncStatus("SYNCED");
         filing.setSyncedAt(LocalDateTime.now());
@@ -78,6 +88,7 @@ public class EinvoiceSyncService {
                 .orElseThrow(() -> new RuntimeException("IRN not found in database: " + irn + ". Sync the period first."));
 
         String gstin = existing.getSupplierGstin();
+        apiUsageService.recordAndEnforce(existing.getFiling().getCompanyGST().getId(), "EINVOICE");
         String url = UriComponentsBuilder.fromHttpUrl(creds.getEinvoiceBaseUrl() + "/irndtl")
                 .queryParam("email", creds.getEmail())
                 .queryParam("gstin", gstin)
@@ -102,8 +113,9 @@ public class EinvoiceSyncService {
         return existing;
     }
 
-    private int syncHsnSummary(EinvoiceFiling filing, String gstin) {
+    private int syncHsnSummary(EinvoiceFiling filing, Integer companyGstId, String gstin) {
         try {
+            apiUsageService.recordAndEnforce(companyGstId, "EINVOICE");
             String url = UriComponentsBuilder.fromHttpUrl(creds.getEinvoiceBaseUrl() + "/hsnsum")
                     .queryParam("email", creds.getEmail())
                     .queryParam("gstin", gstin)
@@ -119,6 +131,8 @@ public class EinvoiceSyncService {
             rows.addAll(mapHsnEntries(resp.getHsn().getHsnB2b(), filing, "B2B"));
             rows.addAll(mapHsnEntries(resp.getHsn().getHsnB2c(), filing, "B2C"));
             return hsnRepository.saveAll(rows).size();
+        } catch (ApiUsageLimitExceededException e) {
+            throw e; // hard block must surface, not be swallowed like other sync failures below
         } catch (Exception e) {
             log.error("E-Invoice HSN sync failed: {}", e.getMessage());
             return 0;
@@ -141,8 +155,9 @@ public class EinvoiceSyncService {
         return rows;
     }
 
-    private int syncIrnList(EinvoiceFiling filing, String gstin, Integer userId) {
+    private int syncIrnList(EinvoiceFiling filing, Integer companyGstId, String gstin, Integer userId) {
         try {
+            apiUsageService.recordAndEnforce(companyGstId, "EINVOICE");
             String url = UriComponentsBuilder.fromHttpUrl(creds.getEinvoiceBaseUrl() + "/irnlist")
                     .queryParam("email", creds.getEmail())
                     .queryParam("gstin", gstin)
@@ -183,6 +198,8 @@ public class EinvoiceSyncService {
                 }
             }
             return count;
+        } catch (ApiUsageLimitExceededException e) {
+            throw e; // hard block must surface, not be swallowed like other sync failures below
         } catch (Exception e) {
             log.error("E-Invoice IRN list sync failed: {}", e.getMessage());
             return 0;
