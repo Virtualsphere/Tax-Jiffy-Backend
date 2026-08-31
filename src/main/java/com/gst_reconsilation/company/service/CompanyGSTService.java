@@ -66,6 +66,12 @@ public class CompanyGSTService {
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
+    /** Active + deactivated GST numbers, for a full subscription/billing history view. */
+    public List<CompanyGSTResponse> getAllByCompany(Integer companyId) {
+        return companyGSTRepository.findByCompany_Id(companyId)
+                .stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
     public CompanyGSTResponse update(Integer id, CompanyGSTRequest req, Integer userId) {
         CompanyGST gst = companyGSTRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + id));
@@ -108,7 +114,11 @@ public class CompanyGSTService {
             r.setCompanyName(g.getCompany().getCompanyName());
         }
         if (g.getSubscriptionPlan() != null) {
+            r.setSubscriptionPlanId(g.getSubscriptionPlan().getId());
             r.setSubscriptionPlanName(g.getSubscriptionPlan().getName());
+            r.setPlanAmount(g.getSubscriptionPlan().getPlanAmount());
+            r.setPlanUserCount(g.getSubscriptionPlan().getUserCount());
+            r.setPlanTransactionCount(g.getSubscriptionPlan().getTransactionCount());
         }
         return r;
     }
