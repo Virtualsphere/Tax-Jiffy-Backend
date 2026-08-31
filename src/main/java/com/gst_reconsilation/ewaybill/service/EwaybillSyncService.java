@@ -1,6 +1,8 @@
 // ewaybill/service/EwaybillSyncService.java
 package com.gst_reconsilation.ewaybill.service;
 
+import com.gst_reconsilation.apiusage.exception.ApiUsageLimitExceededException;
+import com.gst_reconsilation.apiusage.service.ApiUsageService;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.config.GstApiCredentialsProperties;
@@ -32,6 +34,7 @@ public class EwaybillSyncService {
     private final EwaybillRecordRepository recordRepository;
     private final RestTemplate restTemplate;
     private final GstApiCredentialsProperties creds;
+    private final ApiUsageService apiUsageService;
 
     @Transactional
     public EwaybillFiling syncByDate(EwaybillSyncByDateRequest req, Integer userId) {
@@ -50,6 +53,7 @@ public class EwaybillSyncService {
         filing = filingRepository.save(filing);
 
         try {
+            apiUsageService.recordAndEnforce(req.getCompanyGstId(), "EWAYBILL");
             String listUrl = UriComponentsBuilder.fromHttpUrl(creds.getEwaybillBaseUrl() + "/getewaybillsbydate")
                     .queryParam("email", creds.getEmail())
                     .queryParam("date", req.getDate())
@@ -78,6 +82,10 @@ public class EwaybillSyncService {
             filing.setSyncStatus("SYNCED");
             filing.setSyncedAt(LocalDateTime.now());
             log.info("E-way bill sync for {} on {}: {} new records", companyGST.getGstNumber(), req.getDate(), count);
+        } catch (ApiUsageLimitExceededException e) {
+            filing.setSyncStatus("FAILED");
+            filingRepository.save(filing);
+            throw e; // hard block must surface, not be swallowed like other sync failures below
         } catch (Exception e) {
             filing.setSyncStatus("FAILED");
             log.error("E-way bill sync failed: {}", e.getMessage());
@@ -94,6 +102,7 @@ public class EwaybillSyncService {
     }
 
     private EwaybillRecord fetchAndSaveDetail(Long ewbNo, CompanyGST companyGST, EwaybillFiling filing, Integer userId) {
+        apiUsageService.recordAndEnforce(companyGST.getId(), "EWAYBILL");
         String url = UriComponentsBuilder.fromHttpUrl(creds.getEwaybillBaseUrl() + "/getewaybill")
                 .queryParam("email", creds.getEmail())
                 .queryParam("ewbNo", ewbNo)

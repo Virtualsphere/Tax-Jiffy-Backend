@@ -1,6 +1,8 @@
 // ims/service/ImsSyncService.java
 package com.gst_reconsilation.ims.service;
 
+import com.gst_reconsilation.apiusage.exception.ApiUsageLimitExceededException;
+import com.gst_reconsilation.apiusage.service.ApiUsageService;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.config.GstApiCredentialsProperties;
@@ -39,6 +41,7 @@ public class ImsSyncService {
     private final ImsExcelParserService excelParserService;
     private final RestTemplate restTemplate;
     private final GstApiCredentialsProperties creds;
+    private final ApiUsageService apiUsageService;
 
     private static final DateTimeFormatter API_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
@@ -54,6 +57,7 @@ public class ImsSyncService {
 
         int rows;
         try {
+            apiUsageService.recordAndEnforce(companyGST.getId(), "IMS");
             ImsApiResponse resp = callIms(companyGST.getGstNumber(), req, filing.getRetPeriod());
             invoiceRepository.deleteByFiling_Id(filing.getId()); // full-refresh on re-sync, same pattern as Gstr1/2
             List<ImsInvoice> flattened = new ArrayList<>();
@@ -64,6 +68,10 @@ public class ImsSyncService {
             rows = invoiceRepository.saveAll(flattened).size();
             filing.setSyncStatus("SYNCED");
             filing.setSyncedAt(LocalDateTime.now());
+        } catch (ApiUsageLimitExceededException e) {
+            filing.setSyncStatus("FAILED");
+            filingRepository.save(filing);
+            throw e; // hard block must surface, not be swallowed like other sync failures below
         } catch (Exception e) {
             log.error("IMS sync failed for filing {}: {}", filing.getId(), e.getMessage());
             filing.setSyncStatus("FAILED");

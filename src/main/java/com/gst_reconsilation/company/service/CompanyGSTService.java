@@ -11,9 +11,11 @@ import com.gst_reconsilation.user.entity.UserDetails;
 import com.gst_reconsilation.user.repository.UserDetailsRepository;
 import com.gst_reconsilation.user.repository.UserGSTMappingRepository;
 import com.gst_reconsilation.subscription.entity.SubscriptionPlan;
+import com.gst_reconsilation.subscription.entity.SubscriptionPurchase;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.company.repository.CompanyProfileRepository;
 import com.gst_reconsilation.subscription.repository.SubscriptionPlanRepository;
+import com.gst_reconsilation.subscription.repository.SubscriptionPurchaseRepository;
 import com.gst_reconsilation.user.entity.UserGSTMapping;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class CompanyGSTService {
     private final RolesRepository rolesRepository;
     private final UserDetailsRepository userDetailsRepository;
     private final UserGSTMappingRepository userGSTMappingRepository;
+    private final SubscriptionPurchaseRepository subscriptionPurchaseRepository;
 
 
     public CompanyGSTResponse create(CompanyGSTRequest req, Integer userId) {
@@ -151,6 +154,7 @@ public class CompanyGSTService {
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
         companyGSTRepository.save(gst);
+        recordPurchaseHistory(gst, plan, "PURCHASE", userId);
 
         Roles adminRole = getOrCreateRoleForGST(gst, "ADMIN", "Admin role for GST " + gst.getGstNumber(), userId);
 
@@ -194,7 +198,26 @@ public class CompanyGSTService {
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
 
-        return toResponse(companyGSTRepository.save(gst));
+        CompanyGST saved = companyGSTRepository.save(gst);
+        recordPurchaseHistory(saved, plan, "UPGRADE", userId);
+        return toResponse(saved);
+    }
+
+    /** Appends one history row per purchase/upgrade — CompanyGST itself stays a single mutable snapshot. */
+    private void recordPurchaseHistory(CompanyGST gst, SubscriptionPlan plan, String transactionType, Integer userId) {
+        subscriptionPurchaseRepository.save(SubscriptionPurchase.builder()
+                .companyGST(gst)
+                .gstNumber(gst.getGstNumber())
+                .company(gst.getCompany())
+                .subscriptionPlan(plan)
+                .planNameSnapshot(plan.getName())
+                .planAmountSnapshot(plan.getPlanAmount())
+                .transactionType(transactionType)
+                .startDate(gst.getStartDate())
+                .endDate(gst.getEndDate())
+                .isPaymentDone(true)
+                .createdBy(userId)
+                .build());
     }
 
     private Roles getOrCreateRoleForGST(CompanyGST gst, String roleName, String description, Integer userId) {

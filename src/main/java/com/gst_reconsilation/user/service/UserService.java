@@ -66,6 +66,7 @@ public class UserService {
                 .userName(req.getUserName())
                 .userEmail(req.getUserEmail())
                 .userPassword(passwordEncoder.encode(req.getUserPassword()))
+                .mobile(req.getMobile())
                 .createdBy(createdBy)
                 .build();
         user = userRepository.save(user);
@@ -90,6 +91,7 @@ public class UserService {
                 .userName(req.getUserName())
                 .userEmail(req.getUserEmail())
                 .userPassword(passwordEncoder.encode(req.getUserPassword()))
+                .mobile(req.getMobile())
                 .build();
         return toResponse(userRepository.save(user));
     }
@@ -111,6 +113,7 @@ public class UserService {
 
 
         user.setUserName(req.getUserName());
+        if (req.getMobile() != null) user.setMobile(req.getMobile());
         user.setUpdatedBy(updatedBy);
         user.setUpdatedDate(LocalDate.now());
         return toResponse(userRepository.save(user));
@@ -130,6 +133,7 @@ public class UserService {
         r.setId(u.getId());
         r.setUserName(u.getUserName());
         r.setUserEmail(u.getUserEmail());
+        r.setMobile(u.getMobile());
         r.setIsActive(u.getIsActive());
         if (u.getCompany() != null) {
             r.setCompanyId(u.getCompany().getId());

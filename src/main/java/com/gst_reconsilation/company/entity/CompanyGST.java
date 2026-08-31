@@ -39,6 +39,10 @@ public class CompanyGST {
     @Column(name = "EndDate")
     private LocalDateTime endDate;
 
+    /** Overrides the subscription plan's transactionCount as the 3rd-party API call limit for this GST specifically. Null = use the plan's default. */
+    @Column(name = "ApiCallLimitOverride")
+    private Integer apiCallLimitOverride;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;

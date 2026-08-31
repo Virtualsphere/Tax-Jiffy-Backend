@@ -5,6 +5,7 @@ import com.gst_reconsilation.roles.entity.Roles;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "UserDetails")
@@ -28,6 +29,9 @@ public class UserDetails {
     @Column(name = "UserEmail", length = 255)
     private String userEmail;
 
+    @Column(name = "Mobile", length = 20)
+    private String mobile;
+
     @Column(name = "UserPassword", columnDefinition = "TEXT")
     private String userPassword;
 
@@ -42,6 +46,10 @@ public class UserDetails {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "RoleId")
     private Roles role;
+
+    /** Updated on WebSocket connect/disconnect — "last seen", not a heartbeat, so granularity is bounded by session length. */
+    @Column(name = "last_active_at")
+    private LocalDateTime lastActiveAt;
 
     @Column(name = "created_date", nullable = false)
     @Builder.Default
