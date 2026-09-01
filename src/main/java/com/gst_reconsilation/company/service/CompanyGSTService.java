@@ -21,6 +21,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -147,10 +148,11 @@ public class CompanyGSTService {
         SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
+        LocalDateTime start = LocalDateTime.now();
         gst.setSubscriptionPlan(plan);
         gst.setIsPaymentDone(true);
-        gst.setStartDate(req.getStartDate());
-        gst.setEndDate(req.getEndDate());
+        gst.setStartDate(start);
+        gst.setEndDate(start.plusMonths(1));
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
         companyGSTRepository.save(gst);
@@ -192,9 +194,10 @@ public class CompanyGSTService {
         SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
+        LocalDateTime start = LocalDateTime.now();
         gst.setSubscriptionPlan(plan);
-        if (req.getStartDate() != null) gst.setStartDate(req.getStartDate());
-        if (req.getEndDate() != null) gst.setEndDate(req.getEndDate());
+        gst.setStartDate(start);
+        gst.setEndDate(start.plusMonths(1));
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
 
