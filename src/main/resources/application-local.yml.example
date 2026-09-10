@@ -1,0 +1,28 @@
+# Template for local development overrides.
+# Copy to application-local.yml (gitignored) and fill in real values:
+#   cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
+# Then run with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+# Values here override the ${VAR} placeholders in application.yml.
+
+spring:
+  datasource:
+    password: <your local MySQL root password>
+
+jwt:
+  secret: <generate one: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))">
+
+# Sandbox GST API credentials. Replace with the real sandbox values if you need
+# the e-invoice / e-way bill / IMS sync endpoints to work locally.
+gst:
+  api:
+    client-id: local-dev-unset
+    client-secret: local-dev-unset
+
+# Production config uses Linux paths (/home/aditya/...) which land in C:\home\aditya
+# on Windows. Keep local uploads inside the project instead.
+app:
+  excel:
+    upload-dir: ./local-uploads/excel
+  upload:
+    dir: ./local-uploads/photos
+    base-url: http://localhost:7071/uploads/photos

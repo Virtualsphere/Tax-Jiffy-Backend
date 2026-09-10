@@ -5,7 +5,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
-import java.io.InputStream;
+import java.io.File;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -55,9 +55,15 @@ public class ExcelParserService {
     // ─────────────────────────────────────────────────────────────
     //  PUBLIC ENTRY POINT
     // ─────────────────────────────────────────────────────────────
-    public ParseResult parse(InputStream is, Gstr1Filing filing) throws Exception {
+    public ParseResult parse(File file, Gstr1Filing filing) throws Exception {
         ParseResult r = new ParseResult();
-        try (Workbook wb = new XSSFWorkbook(is)) {
+        // Opened from the File rather than an InputStream on purpose:
+        // XSSFWorkbook(InputStream) streams the zip and throws
+        // UnsupportedZipFeatureException on entries written with a data
+        // descriptor, which the official portal templates use for their
+        // embedded images. Reading the File lets POI use the zip central
+        // directory, which handles them.
+        try (Workbook wb = new XSSFWorkbook(file)) {
             r.b2b       = parseSheet(wb, SH_B2B,       row -> buildB2b(row, filing));
             r.b2ba      = parseSheet(wb, SH_B2BA,      row -> buildB2ba(row, filing));
             r.b2cl      = parseSheet(wb, SH_B2CL,      row -> buildB2cl(row, filing));

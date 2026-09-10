@@ -76,7 +76,7 @@ public class Gstr1UploadService {
         // 1. Validate file type
         String originalName = file.getOriginalFilename();
         if (originalName == null ||
-                (!originalName.endsWith(".xlsx") && !originalName.endsWith(".xls"))) {
+                (!originalName.toLowerCase().endsWith(".xlsx") && !originalName.toLowerCase().endsWith(".xls"))) {
             throw new IllegalArgumentException("Only .xlsx or .xls files are accepted");
         }
 
@@ -109,9 +109,7 @@ public class Gstr1UploadService {
 
         // 6. Parse all sheets
         ExcelParserService.ParseResult parsed;
-        try (var is = Files.newInputStream(Paths.get(savedPath))) {
-            parsed = excelParserService.parse(is, filing);
-        }
+        parsed = excelParserService.parse(Paths.get(savedPath).toFile(), filing);
 
         // 7. Persist all sheet data
         int b2b       = b2bRepository.saveAll(parsed.b2b).size();
@@ -257,10 +255,16 @@ public class Gstr1UploadService {
         String safeName  = file.getOriginalFilename().replaceAll("[^a-zA-Z0-9._-]", "_");
         String fileName  = timestamp + "_" + uid + "_" + safeName;
 
-        Path dir = Paths.get(uploadDir, gstNumber, financialYear, taxPeriod);
+        Path dir = Paths.get(uploadDir, gstNumber, financialYear, taxPeriod).toAbsolutePath().normalize();
         Files.createDirectories(dir);
         Path target = dir.resolve(fileName);
-        file.transferTo(target.toFile());
+        // transferTo() resolves a relative destination against the servlet
+        // container's temp directory rather than the working directory, which left
+        // the file outside the tree created above and broke the parse step below.
+        // Copying the stream to an absolute path is deterministic either way.
+        try (var in = file.getInputStream()) {
+            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+        }
 
         log.info("Excel saved: {}", target.toAbsolutePath());
         return target.toAbsolutePath().toString();
