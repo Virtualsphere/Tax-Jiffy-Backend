@@ -277,7 +277,7 @@ public class EinvoiceSyncService {
     @Transactional
     public EinvoiceSyncResponse uploadExcel(MultipartFile file, Integer companyGstId, String retPeriod, Integer userId) throws Exception {
         String originalName = file.getOriginalFilename();
-        if (originalName == null || (!originalName.endsWith(".xlsx") && !originalName.endsWith(".xls"))) {
+        if (originalName == null || (!originalName.toLowerCase().endsWith(".xlsx") && !originalName.toLowerCase().endsWith(".xls"))) {
             throw new IllegalArgumentException("Only .xlsx or .xls files are accepted");
         }
         CompanyGST companyGST = companyGSTRepository.findById(companyGstId)

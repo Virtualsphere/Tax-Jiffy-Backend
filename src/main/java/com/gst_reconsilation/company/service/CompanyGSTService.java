@@ -29,6 +29,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CompanyGSTService {
 
+    /** Every subscription runs for one month from the moment it is paid for. */
+    private static final int SUBSCRIPTION_MONTHS = 1;
+
     private final CompanyGSTRepository companyGSTRepository;
     private final CompanyProfileRepository companyProfileRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
@@ -149,10 +152,11 @@ public class CompanyGSTService {
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
         LocalDateTime start = LocalDateTime.now();
+
         gst.setSubscriptionPlan(plan);
         gst.setIsPaymentDone(true);
         gst.setStartDate(start);
-        gst.setEndDate(start.plusMonths(1));
+        gst.setEndDate(start.plusMonths(SUBSCRIPTION_MONTHS));
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
         companyGSTRepository.save(gst);
@@ -194,10 +198,15 @@ public class CompanyGSTService {
         SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
-        LocalDateTime start = LocalDateTime.now();
         gst.setSubscriptionPlan(plan);
-        gst.setStartDate(start);
-        gst.setEndDate(start.plusMonths(1));
+        // An upgrade swaps the plan inside the period already paid for, so the
+        // existing window stands. Only records that never got one (rows written
+        // before the period was computed server-side) need a fresh window.
+        if (gst.getStartDate() == null || gst.getEndDate() == null) {
+            LocalDateTime start = LocalDateTime.now();
+            gst.setStartDate(start);
+            gst.setEndDate(start.plusMonths(SUBSCRIPTION_MONTHS));
+        }
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
 

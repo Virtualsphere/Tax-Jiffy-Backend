@@ -113,8 +113,8 @@ public class Gstr1EwaybillReconciliationService {
             // totalValue is the taxable value while Gstr1B2b.invoiceValue is tax-inclusive, so
             // comparing the two left the bucket remainder permanently non-zero and every
             // correctly-covered e-way bill stuck in VALUE_MISMATCH. totInvValue is the
-            // like-for-like figure; fall back to totalValue only when it was never populated.
-            BigDecimal ewbValue = ewb.getTotInvValue() != null ? ewb.getTotInvValue() : nz(ewb.getTotalValue());
+            // like-for-like figure; fall back to totalValue when it was never populated.
+            BigDecimal ewbValue = positive(ewb.getTotInvValue()) ? ewb.getTotInvValue() : nz(ewb.getTotalValue());
             BigDecimal diff = ewbValue.subtract(sumMatched);
 
             String status;
@@ -231,6 +231,12 @@ public class Gstr1EwaybillReconciliationService {
 
     private String norm(String s) {
         return s == null ? "" : s.trim().toUpperCase();
+    }
+
+    /** The Excel import runs every amount through a null-to-ZERO helper, so a blank value column
+     *  arrives as 0 rather than null — "has a usable figure" has to mean positive, not non-null. */
+    private boolean positive(BigDecimal v) {
+        return v != null && v.compareTo(BigDecimal.ZERO) > 0;
     }
 
     private BigDecimal nz(BigDecimal v) {
