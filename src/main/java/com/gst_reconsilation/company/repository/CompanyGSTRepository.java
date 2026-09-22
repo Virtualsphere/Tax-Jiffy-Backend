@@ -10,6 +10,9 @@ import java.util.Optional;
 public interface CompanyGSTRepository extends JpaRepository<CompanyGST, Integer> {
     Optional<CompanyGST> findByGstNumber(String gstNumber);
     List<CompanyGST> findByCompany_IdAndIsActiveTrue(Integer companyId);
+
+    /** Every GST for the company, deactivated ones included - the billing history view. */
+    List<CompanyGST> findByCompany_Id(Integer companyId);
     boolean existsByGstNumber(String gstNumber);
 
     Optional<CompanyGST> findFirstByCompany_IdAndIsActiveTrueAndIsPaymentDoneTrue(Integer companyId);

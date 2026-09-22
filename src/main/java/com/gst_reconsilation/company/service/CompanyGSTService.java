@@ -19,12 +19,16 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CompanyGSTService {
+
+    /** Every subscription runs for one month from the moment it is paid for. */
+    private static final int SUBSCRIPTION_MONTHS = 1;
 
     private final CompanyGSTRepository companyGSTRepository;
     private final CompanyProfileRepository companyProfileRepository;
@@ -63,6 +67,15 @@ public class CompanyGSTService {
 
     public List<CompanyGSTResponse> getByCompany(Integer companyId) {
         return companyGSTRepository.findByCompany_IdAndIsActiveTrue(companyId)
+                .stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
+    /**
+     * Full subscription history for the company. Unlike getByCompany this keeps
+     * deactivated GSTs, which the billing screen needs to show past spend.
+     */
+    public List<CompanyGSTResponse> getAllByCompany(Integer companyId) {
+        return companyGSTRepository.findByCompany_Id(companyId)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
@@ -108,7 +121,11 @@ public class CompanyGSTService {
             r.setCompanyName(g.getCompany().getCompanyName());
         }
         if (g.getSubscriptionPlan() != null) {
+            r.setSubscriptionPlanId(g.getSubscriptionPlan().getId());
             r.setSubscriptionPlanName(g.getSubscriptionPlan().getName());
+            r.setPlanAmount(g.getSubscriptionPlan().getPlanAmount());
+            r.setPlanUserCount(g.getSubscriptionPlan().getUserCount());
+            r.setPlanTransactionCount(g.getSubscriptionPlan().getTransactionCount());
         }
         return r;
     }
@@ -134,10 +151,12 @@ public class CompanyGSTService {
         SubscriptionPlan plan = subscriptionPlanRepository.findById(req.getSubscriptionPlanId())
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
+        LocalDateTime start = LocalDateTime.now();
+
         gst.setSubscriptionPlan(plan);
         gst.setIsPaymentDone(true);
-        gst.setStartDate(req.getStartDate());
-        gst.setEndDate(req.getEndDate());
+        gst.setStartDate(start);
+        gst.setEndDate(start.plusMonths(SUBSCRIPTION_MONTHS));
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
         companyGSTRepository.save(gst);
@@ -179,8 +198,14 @@ public class CompanyGSTService {
                 .orElseThrow(() -> new RuntimeException("Subscription plan not found"));
 
         gst.setSubscriptionPlan(plan);
-        if (req.getStartDate() != null) gst.setStartDate(req.getStartDate());
-        if (req.getEndDate() != null) gst.setEndDate(req.getEndDate());
+        // An upgrade swaps the plan inside the period already paid for, so the
+        // existing window stands. Only records that never got one (rows written
+        // before the period was computed server-side) need a fresh window.
+        if (gst.getStartDate() == null || gst.getEndDate() == null) {
+            LocalDateTime start = LocalDateTime.now();
+            gst.setStartDate(start);
+            gst.setEndDate(start.plusMonths(SUBSCRIPTION_MONTHS));
+        }
         gst.setUpdatedBy(userId);
         gst.setUpdatedDate(LocalDate.now());
 

@@ -38,6 +38,11 @@ public class CompanyGSTController {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getByCompany(companyId)));
     }
 
+    @GetMapping("/by-company/{companyId}/all")
+    public ResponseEntity<ApiResponse<List<CompanyGSTResponse>>> getAllByCompany(@PathVariable Integer companyId) {
+        return ResponseEntity.ok(ApiResponse.success("OK", service.getAllByCompany(companyId)));
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<CompanyGSTResponse>> update(
             @PathVariable Integer id,
