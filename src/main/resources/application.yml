@@ -6,7 +6,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/gst_reconciliation_system
     username: root
-    password: ${DB_PASSWORD}
+    password: Taxjiffy@1234
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   servlet:
@@ -34,7 +34,7 @@ springdoc:
     filter: true
 
 jwt:
-  secret: ${JWT_SECRET}
+  secret: 49827016d37870f03fa2bb5d391ab441ba7057ec3412ce6dca12c3f7baf61db5
   expiration-ms: 86400000
 
 gstr1:
