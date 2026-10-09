@@ -9,6 +9,8 @@ import com.gst_reconsilation.company.repository.CompanyProfileRepository;
 import com.gst_reconsilation.user.repository.UserDetailsRepository;
 import com.gst_reconsilation.user.repository.UserGSTMappingRepository;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
+import com.gst_reconsilation.permission.PermissionAction;
+import com.gst_reconsilation.permission.PermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -28,9 +30,10 @@ public class UserService {
     private final UserGSTMappingRepository userGSTMappingRepository;
     private final CompanyGSTRepository companyGSTRepository;
     private final RolesRepository rolesRepository;
+    private final PermissionService permissionService;
 
     public UserResponse create(UserRequest req, Integer createdBy) {
-        assertCallerIsAdminOfGST(createdBy, req.getCompanyGstId());
+        permissionService.assertPageAccess(createdBy, req.getCompanyGstId(), PermissionService.PAGE_USER_MANAGEMENT, PermissionAction.ADD);
 
         if (userRepository.existsByUserEmail(req.getUserEmail())) {
             throw new RuntimeException("Email already registered: " + req.getUserEmail());
@@ -49,16 +52,18 @@ public class UserService {
             throw new RuntimeException("User limit reached (" + allowedCount + " users allowed on this GST's plan)");
         }
 
-        // Scoped USER role for this company + GST — created on first use instead
-        // of relying on a globally-seeded role.
-        Roles userRole = rolesRepository.findByRoleNameAndCompanyGST_IdAndIsActiveTrue("USER", gst.getId())
-                .orElseGet(() -> rolesRepository.save(Roles.builder()
-                        .roleName("USER")
-                        .description("User role for GST " + gst.getGstNumber())
-                        .company(gst.getCompany())
-                        .companyGST(gst)
-                        .createdBy(createdBy)
-                        .build()));
+        Roles userRole = req.getRoleId() != null
+                ? assignableRole(req.getRoleId(), gst.getId())
+                // Scoped USER role for this company + GST — created on first use instead
+                // of relying on a globally-seeded role.
+                : rolesRepository.findByRoleNameAndCompanyGST_IdAndIsActiveTrue("USER", gst.getId())
+                        .orElseGet(() -> rolesRepository.save(Roles.builder()
+                                .roleName("USER")
+                                .description("User role for GST " + gst.getGstNumber())
+                                .company(gst.getCompany())
+                                .companyGST(gst)
+                                .createdBy(createdBy)
+                                .build()));
 
         UserDetails user = UserDetails.builder()
                 .company(gst.getCompany())
@@ -145,16 +150,17 @@ public class UserService {
         return r;
     }
 
-    private void assertCallerIsAdminOfGST(Integer callerId, Integer companyGstId) {
-        UserDetails caller = userRepository.findById(callerId)
-                .orElseThrow(() -> new RuntimeException("Caller not found"));
-        if (Boolean.TRUE.equals(caller.getIsSuperAdmin())) return;
-
-        boolean isAdmin = userGSTMappingRepository
-                .findByUser_IdAndIsActiveTrueAndIsAdminTrue(callerId)
-                .stream()
-                .anyMatch(m -> m.getCompanyGST().getId().equals(companyGstId));
-
-        if (!isAdmin) throw new RuntimeException("Only the GST admin can add users to this GST");
+    private Roles assignableRole(Integer roleId, Integer companyGstId) {
+        Roles role = rolesRepository.findById(roleId)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleId));
+        if (!Boolean.TRUE.equals(role.getIsActive())
+                || role.getCompanyGST() == null
+                || !role.getCompanyGST().getId().equals(companyGstId)) {
+            throw new RuntimeException("Role does not belong to this GST");
+        }
+        if ("ADMIN".equalsIgnoreCase(role.getRoleName())) {
+            throw new RuntimeException("The ADMIN role cannot be assigned to users");
+        }
+        return role;
     }
 }

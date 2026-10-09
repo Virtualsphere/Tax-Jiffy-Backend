@@ -8,6 +8,7 @@ public class UserGSTMappingResponse {
     private String userName;
     private Integer companyGstId;
     private String gstNumber;
+    private Integer roleId;
     private String roleName;
     private Boolean isAdmin;
     private Boolean isActive;

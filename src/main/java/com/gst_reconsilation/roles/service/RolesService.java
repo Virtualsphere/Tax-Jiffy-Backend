@@ -4,12 +4,12 @@ import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.entity.CompanyProfile;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.company.repository.CompanyProfileRepository;
+import com.gst_reconsilation.permission.PermissionAction;
+import com.gst_reconsilation.permission.PermissionService;
 import com.gst_reconsilation.roles.dto.RolesRequest;
 import com.gst_reconsilation.roles.dto.RolesResponse;
 import com.gst_reconsilation.roles.entity.Roles;
 import com.gst_reconsilation.roles.repository.RolesRepository;
-import com.gst_reconsilation.user.entity.UserDetails;
-import com.gst_reconsilation.user.repository.UserDetailsRepository;
 import com.gst_reconsilation.user.repository.UserGSTMappingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,19 +25,19 @@ public class RolesService {
     private final RolesRepository repository;
     private final CompanyProfileRepository companyProfileRepository;
     private final CompanyGSTRepository companyGSTRepository;
-    private final UserDetailsRepository userDetailsRepository;
     private final UserGSTMappingRepository userGSTMappingRepository;
+    private final PermissionService permissionService;
 
     /**
-     * A GST's own admin (or a platform super admin) creates additional roles
-     * scoped to that company + GST. This is no longer super-admin-only.
+     * Creates a role scoped to a company + GST. Allowed for the GST's admin, the
+     * company owner, a super admin, or anyone whose role grants Add on Role Editor.
      */
     public RolesResponse create(RolesRequest req, Integer userId) {
         if (req.getCompanyId() == null || req.getCompanyGstId() == null) {
             throw new RuntimeException("companyId and companyGstId are required to create a role");
         }
 
-        assertCallerIsAdminOfGST(userId, req.getCompanyGstId());
+        permissionService.assertPageAccess(userId, req.getCompanyGstId(), PermissionService.PAGE_ROLE_EDITOR, PermissionAction.ADD);
 
         CompanyProfile company = companyProfileRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new RuntimeException("Company not found: " + req.getCompanyId()));
@@ -83,9 +83,11 @@ public class RolesService {
         Roles role = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Role not found: " + id));
 
-        if (role.getCompanyGST() != null) {
-            assertCallerIsAdminOfGST(userId, role.getCompanyGST().getId());
+        if (role.getCompanyGST() == null) {
+            throw new RuntimeException("System roles cannot be modified");
         }
+        permissionService.assertPageAccess(userId, role.getCompanyGST().getId(), PermissionService.PAGE_ROLE_EDITOR, PermissionAction.EDIT);
+        assertNotAdminRole(role);
 
         role.setRoleName(req.getRoleName());
         role.setDescription(req.getDescription());
@@ -98,8 +100,13 @@ public class RolesService {
         Roles role = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Role not found: " + id));
 
-        if (role.getCompanyGST() != null) {
-            assertCallerIsAdminOfGST(userId, role.getCompanyGST().getId());
+        if (role.getCompanyGST() == null) {
+            throw new RuntimeException("System roles cannot be modified");
+        }
+        permissionService.assertPageAccess(userId, role.getCompanyGST().getId(), PermissionService.PAGE_ROLE_EDITOR, PermissionAction.DELETE);
+        assertNotAdminRole(role);
+        if (userGSTMappingRepository.findByRole_IdAndIsActiveTrue(id).size() > 0) {
+            throw new RuntimeException("Role is assigned to users — reassign them before deleting it");
         }
 
         role.setIsActive(false);
@@ -108,17 +115,11 @@ public class RolesService {
         repository.save(role);
     }
 
-    private void assertCallerIsAdminOfGST(Integer callerId, Integer companyGstId) {
-        UserDetails caller = userDetailsRepository.findById(callerId)
-                .orElseThrow(() -> new RuntimeException("Caller not found"));
-        if (Boolean.TRUE.equals(caller.getIsSuperAdmin())) return;
-
-        boolean isAdmin = userGSTMappingRepository
-                .findByUser_IdAndIsActiveTrueAndIsAdminTrue(callerId)
-                .stream()
-                .anyMatch(m -> m.getCompanyGST().getId().equals(companyGstId));
-
-        if (!isAdmin) throw new RuntimeException("Only the GST admin can manage roles for this GST");
+    /** The per-GST ADMIN role is what purchase grants the owner — renaming or removing it would orphan them. */
+    private void assertNotAdminRole(Roles role) {
+        if ("ADMIN".equalsIgnoreCase(role.getRoleName())) {
+            throw new RuntimeException("The ADMIN role cannot be modified");
+        }
     }
 
     private RolesResponse toResponse(Roles r) {

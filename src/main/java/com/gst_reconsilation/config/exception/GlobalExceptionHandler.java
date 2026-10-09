@@ -2,6 +2,7 @@ package com.gst_reconsilation.config.exception;
 
 import com.gst_reconsilation.apiusage.exception.ApiUsageLimitExceededException;
 import com.gst_reconsilation.config.dto.ApiResponse;
+import com.gst_reconsilation.permission.PermissionDeniedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleApiUsageLimitExceeded(ApiUsageLimitExceededException ex) {
         log.warn("API usage limit exceeded: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(PermissionDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePermissionDenied(PermissionDeniedException ex) {
+        log.warn("Permission denied: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
