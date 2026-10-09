@@ -1,6 +1,7 @@
 package com.gst_reconsilation.rolesmapping.controller;
 
 import com.gst_reconsilation.config.dto.ApiResponse;
+import com.gst_reconsilation.permission.dto.ScreenPermissionDto;
 import com.gst_reconsilation.rolesmapping.dto.RoleMappingRequest;
 import com.gst_reconsilation.rolesmapping.dto.RoleMappingResponse;
 import com.gst_reconsilation.rolesmapping.service.RoleMappingService;
@@ -58,6 +59,16 @@ public class RoleMappingController {
             Authentication auth) {
         Integer userId = (Integer) auth.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success("Updated", service.update(id, req, userId)));
+    }
+
+    /** Replace the role's full permission matrix (see RoleMappingService.replaceForRole). */
+    @PutMapping("/by-role/{roleId}")
+    public ResponseEntity<ApiResponse<List<RoleMappingResponse>>> replaceForRole(
+            @PathVariable Integer roleId,
+            @RequestBody List<ScreenPermissionDto> permissions,
+            Authentication auth) {
+        Integer userId = (Integer) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success("Saved", service.replaceForRole(roleId, permissions, userId)));
     }
 
     @DeleteMapping("/{id}")

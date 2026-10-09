@@ -8,4 +8,6 @@ public class UserRequest {
     private String userEmail;
     private String userPassword;
     private String mobile;
+    /** Role on companyGstId for a new sub-user; defaults to the GST's USER role. */
+    private Integer roleId;
 }

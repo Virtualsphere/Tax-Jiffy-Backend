@@ -10,6 +10,9 @@ import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.roles.repository.RolesRepository;
 import com.gst_reconsilation.user.repository.UserDetailsRepository;
 import com.gst_reconsilation.user.repository.UserGSTMappingRepository;
+import com.gst_reconsilation.permission.PermissionAction;
+import com.gst_reconsilation.permission.PermissionDeniedException;
+import com.gst_reconsilation.permission.PermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
@@ -24,8 +27,14 @@ public class UserGSTMappingService {
     private final UserDetailsRepository userRepository;
     private final CompanyGSTRepository companyGSTRepository;
     private final RolesRepository rolesRepository;
+    private final PermissionService permissionService;
 
     public UserGSTMappingResponse create(UserGSTMappingRequest req, Integer createdBy) {
+        permissionService.assertPageAccess(createdBy, req.getCompanyGstId(), PermissionService.PAGE_USER_MANAGEMENT, PermissionAction.ADD);
+        // Only someone with full access on the GST may hand out admin rights on it.
+        if (Boolean.TRUE.equals(req.getIsAdmin()) && !permissionService.hasFullAccess(createdBy, req.getCompanyGstId())) {
+            throw new PermissionDeniedException("Only a GST admin can grant admin access");
+        }
         if (mappingRepository.findByUser_IdAndCompanyGST_IdAndIsActiveTrue(req.getUserId(), req.getCompanyGstId()).isPresent()) {
             throw new RuntimeException("Mapping already exists for this user and GST number");
         }
@@ -36,6 +45,7 @@ public class UserGSTMappingService {
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + req.getCompanyGstId()));
         Roles role = rolesRepository.findById(req.getRoleId())
                 .orElseThrow(() -> new RuntimeException("Role not found: " + req.getRoleId()));
+        assertAssignableRole(role, req.getCompanyGstId());
 
         UserGSTMapping mapping = UserGSTMapping.builder()
                 .user(user)
@@ -61,10 +71,50 @@ public class UserGSTMappingService {
     public void deactivate(Integer id, Integer updatedBy) {
         UserGSTMapping mapping = mappingRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Mapping not found: " + id));
+        Integer gstId = mapping.getCompanyGST().getId();
+        permissionService.assertPageAccess(updatedBy, gstId, PermissionService.PAGE_USER_MANAGEMENT, PermissionAction.DELETE);
+        if (Boolean.TRUE.equals(mapping.getIsAdmin()) && !permissionService.hasFullAccess(updatedBy, gstId)) {
+            throw new PermissionDeniedException("Only a GST admin can remove another admin");
+        }
         mapping.setIsActive(false);
         mapping.setUpdatedBy(updatedBy);
         mapping.setUpdatedDate(LocalDate.now());
         mappingRepository.save(mapping);
+    }
+
+    /** Changes which role a user has on a GST. The GST admin's own mapping stays ADMIN. */
+    public UserGSTMappingResponse updateRole(Integer id, Integer roleId, Integer updatedBy) {
+        UserGSTMapping mapping = mappingRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Mapping not found: " + id));
+        Integer gstId = mapping.getCompanyGST().getId();
+        permissionService.assertPageAccess(updatedBy, gstId, PermissionService.PAGE_USER_MANAGEMENT, PermissionAction.EDIT);
+        if (Boolean.TRUE.equals(mapping.getIsAdmin())) {
+            throw new RuntimeException("The GST admin's role cannot be changed");
+        }
+        if (mapping.getUser().getId().equals(updatedBy)) {
+            throw new PermissionDeniedException("You cannot change your own role");
+        }
+
+        Roles role = rolesRepository.findById(roleId)
+                .orElseThrow(() -> new RuntimeException("Role not found: " + roleId));
+        assertAssignableRole(role, gstId);
+
+        mapping.setRole(role);
+        mapping.setUpdatedBy(updatedBy);
+        mapping.setUpdatedDate(LocalDate.now());
+        return toResponse(mappingRepository.save(mapping));
+    }
+
+    /** A user can only be given an active, non-ADMIN role that belongs to the same GST. */
+    private void assertAssignableRole(Roles role, Integer companyGstId) {
+        if (!Boolean.TRUE.equals(role.getIsActive())
+                || role.getCompanyGST() == null
+                || !role.getCompanyGST().getId().equals(companyGstId)) {
+            throw new RuntimeException("Role does not belong to this GST");
+        }
+        if ("ADMIN".equalsIgnoreCase(role.getRoleName())) {
+            throw new RuntimeException("The ADMIN role cannot be assigned to users");
+        }
     }
 
     private UserGSTMappingResponse toResponse(UserGSTMapping m) {
@@ -81,6 +131,7 @@ public class UserGSTMappingService {
             r.setGstNumber(m.getCompanyGST().getGstNumber());
         }
         if (m.getRole() != null) {
+            r.setRoleId(m.getRole().getId());
             r.setRoleName(m.getRole().getRoleName());
         }
         return r;

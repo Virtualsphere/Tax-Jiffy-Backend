@@ -37,6 +37,16 @@ public class UserGSTMappingController {
         return ResponseEntity.ok(ApiResponse.success("OK", service.getByCompanyGST(companyGstId)));
     }
 
+    /** Body: {"roleId": 12} */
+    @PutMapping("/{id}/role")
+    public ResponseEntity<ApiResponse<UserGSTMappingResponse>> updateRole(
+            @PathVariable Integer id,
+            @RequestBody UserGSTMappingRequest req,
+            Authentication auth) {
+        Integer userId = (Integer) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success("Updated", service.updateRole(id, req.getRoleId(), userId)));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deactivate(
             @PathVariable Integer id,
