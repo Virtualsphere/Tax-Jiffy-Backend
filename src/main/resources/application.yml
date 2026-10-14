@@ -55,7 +55,7 @@ gst:
 
 app:
   excel:
-    upload-dir: /home/aditya/uploads/excel
+    upload-dir: /srv/taxjiffy/uploads/excel
   upload:
-    dir: /home/aditya/uploads/photos
+    dir: /srv/taxjiffy/uploads/photos
     base-url: https://api.taxjiffy.com/uploads/photos
