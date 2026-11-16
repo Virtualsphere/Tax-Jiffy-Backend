@@ -74,7 +74,7 @@ public class Gstr3bController {
 
     @PostMapping("/filings/{filingId}/sync-2b")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> sync2b(
-            @PathVariable Integer filingId, @RequestBody TwoBCredentials credentials, Authentication auth) {
+            @PathVariable Integer filingId, @RequestBody(required = false) TwoBCredentials credentials, Authentication auth) {
 
         Integer userId = (Integer) auth.getPrincipal();
         int rows = twoBSyncService.sync(filingId, credentials, userId);

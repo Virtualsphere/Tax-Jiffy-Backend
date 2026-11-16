@@ -3,23 +3,13 @@ package com.gst_reconsilation.gstr3b.dto;
 import lombok.Data;
 
 /**
- * Parameters for GET /gstr2b/all (see API doc: "Getting the details for given
- * GSTIN, Return Period").
- * gstin / rtnprd / filenum / email are query params; the rest are headers.
+ * Optional body for POST /api/gstr3b/filings/{id}/sync-2b (Whitebooks GET /gstr2b/all).
+ * GSTIN comes from the filing; keys, username and txn come from the server-side GST session.
  */
 @Data
 public class TwoBCredentials {
-    // Query params
-    private String gstin;
-    private String rtnprd;   // Return Period
-    private String filenum;  // File Number
-    private String email;
-
-    // Headers
-    private String gstUsername;
-    private String stateCd;
-    private String ipAddress;
-    private String txn;
-    private String clientId;
-    private String clientSecret;
+    /** Return period MMYYYY. Defaults to the filing's own period when omitted. */
+    private String rtnprd;
+    /** File number, only needed when GSTN splits a large 2B into several files. */
+    private String filenum;
 }

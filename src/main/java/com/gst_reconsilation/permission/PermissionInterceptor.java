@@ -47,7 +47,9 @@ public class PermissionInterceptor implements HandlerInterceptor {
             new Rule("/api/gstr2b", List.of("GSTR-2B")),
             new Rule("/api/gstr2", List.of("Inward Supply", "GSTR-2B", "GSTR-3B")),
             new Rule("/api/gstr3b", List.of("GSTR-3B")),
-            new Rule("/api/ims", List.of("IMS"))
+            new Rule("/api/ims", List.of("IMS")),
+            // GST portal OTP session: anyone allowed to sync GST data for that GSTIN may connect it
+            new Rule("/api/gst-session", List.of("GSTR-1", "GSTR-1A", "GSTR-2B", "GSTR-3B", "IMS", "E-Invoice"))
     );
 
     private final PermissionService permissionService;

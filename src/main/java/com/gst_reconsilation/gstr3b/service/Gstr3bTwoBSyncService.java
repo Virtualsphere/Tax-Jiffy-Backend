@@ -9,11 +9,14 @@ import com.gst_reconsilation.gstr3b.repository.Gstr3bFilingRepository;
 import com.gst_reconsilation.gstr3b.repository.Gstr3bItcSummaryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import com.gst_reconsilation.config.GstApiCredentialsProperties;
+import com.gst_reconsilation.whitebooks.GstPeriods;
+import com.gst_reconsilation.whitebooks.WhitebooksApiException;
+import com.gst_reconsilation.whitebooks.WhitebooksClient;
+import com.gst_reconsilation.whitebooks.session.GstAuthService;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
@@ -33,10 +36,9 @@ public class Gstr3bTwoBSyncService {
 
     private final Gstr3bFilingRepository filingRepository;
     private final Gstr3bItcSummaryRepository itcSummaryRepository;
-    private final RestTemplate restTemplate;
-
-    @Value("${gstr3b.api.gstr2b-base-url:https://apisandbox.whitebooks.in}")
-    private String baseUrl;
+    private final WhitebooksClient client;
+    private final GstAuthService gstAuthService;
+    private final GstApiCredentialsProperties props;
 
     private static final String[] BUCKETS = {"itcavl", "itcunavl", "itcrev", "itcRejected"};
     private static final String[] CATEGORIES = {"nonrevsup", "isdsup", "revsup", "imports", "othersup"};
@@ -46,7 +48,7 @@ public class Gstr3bTwoBSyncService {
         Gstr3bFiling filing = filingRepository.findById(filingId)
                 .orElseThrow(() -> new RuntimeException("Gstr3bFiling not found: " + filingId));
 
-        Gstr2bApiResponse resp = call2b(creds);
+        Gstr2bApiResponse resp = call2b(filing, creds);
 
         itcSummaryRepository.deleteByFiling_Id(filingId);
 
@@ -68,25 +70,29 @@ public class Gstr3bTwoBSyncService {
         return saved;
     }
 
-    private Gstr2bApiResponse call2b(TwoBCredentials creds) {
-        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/gstr2b/all")
-                .queryParam("gstin", creds.getGstin())
-                .queryParam("rtnprd", creds.getRtnprd())
-                .queryParam("filenum", creds.getFilenum())
-                .queryParam("email", creds.getEmail())
-                .toUriString();
+    private Gstr2bApiResponse call2b(Gstr3bFiling filing, TwoBCredentials req) {
+        if (filing.getCompanyGST() == null) throw new RuntimeException("Filing has no company GST");
+        Integer companyGstId = filing.getCompanyGST().getId();
+        HttpHeaders headers = gstAuthService.headersFor(companyGstId); // HTTP 428 if no verified session
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("get_username", creds.getGstUsername());
-        headers.set("state_cd", creds.getStateCd());
-        headers.set("ip_address", creds.getIpAddress());
-        headers.set("txn", creds.getTxn());
-        headers.set("client_id", creds.getClientId());
-        headers.set("client_secret", creds.getClientSecret());
+        String rtnprd = req != null && req.getRtnprd() != null && !req.getRtnprd().isBlank()
+                ? req.getRtnprd()
+                : GstPeriods.toRetPeriod(filing.getFinancialYear(), filing.getTaxPeriod());
 
-        ResponseEntity<Gstr2bApiResponse> resp = restTemplate.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(headers), Gstr2bApiResponse.class);
-        return resp.getBody();
+        UriComponentsBuilder url = UriComponentsBuilder.fromHttpUrl(props.getBaseUrl() + "/gstr2b/all")
+                .queryParam("gstin", filing.getCompanyGST().getGstNumber())
+                .queryParam("rtnprd", rtnprd)
+                .queryParam("email", props.getEmail());
+        if (req != null && req.getFilenum() != null && !req.getFilenum().isBlank()) {
+            url.queryParam("filenum", req.getFilenum());
+        }
+
+        try {
+            // Gstr2bApiResponse already models the {"data": {...}} wrapper itself
+            return client.rootAs(client.get(url.toUriString(), headers), Gstr2bApiResponse.class);
+        } catch (WhitebooksApiException e) {
+            throw gstAuthService.handleCallFailure(companyGstId, e);
+        }
     }
 
     private void addBucket(List<Gstr3bItcSummary> rows, Gstr3bFiling filing, Integer userId,

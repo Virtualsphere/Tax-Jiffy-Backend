@@ -12,10 +12,11 @@ import com.gst_reconsilation.ewaybill.entity.*;
 import com.gst_reconsilation.ewaybill.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import com.gst_reconsilation.whitebooks.WhitebooksApiException;
+import com.gst_reconsilation.whitebooks.WhitebooksClient;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -32,7 +33,7 @@ public class EwaybillSyncService {
     private final CompanyGSTRepository companyGSTRepository;
     private final EwaybillFilingRepository filingRepository;
     private final EwaybillRecordRepository recordRepository;
-    private final RestTemplate restTemplate;
+    private final WhitebooksClient client;
     private final GstApiCredentialsProperties creds;
     private final ApiUsageService apiUsageService;
 
@@ -56,17 +57,16 @@ public class EwaybillSyncService {
             apiUsageService.recordAndEnforce(req.getCompanyGstId(), "EWAYBILL");
             String listUrl = UriComponentsBuilder.fromHttpUrl(creds.getEwaybillBaseUrl() + "/getewaybillsbydate")
                     .queryParam("email", creds.getEmail())
-                    .queryParam("date", req.getDate())
+                    .queryParam("date", toEwbDate(req.getDate()))
                     .toUriString();
 
-            HttpHeaders listHeaders = new HttpHeaders();
-            listHeaders.set("ip_address", creds.getIpAddress());
-            listHeaders.set("client_id", creds.getClientId());
-            listHeaders.set("client_secret", creds.getClientSecret());
-            listHeaders.set("gstin", companyGST.getGstNumber());
-
-            EwaybillByDateEntry[] summary = restTemplate.exchange(
-                    listUrl, HttpMethod.GET, new HttpEntity<>(listHeaders), EwaybillByDateEntry[].class).getBody();
+            EwaybillByDateEntry[] summary;
+            try {
+                summary = client.getData(listUrl, ewbHeaders(companyGST), EwaybillByDateEntry[].class);
+            } catch (WhitebooksApiException e) {
+                if (!WhitebooksApiException.isNoData(e)) throw e;
+                summary = null;
+            }
 
             int count = 0;
             if (summary != null) {
@@ -82,10 +82,10 @@ public class EwaybillSyncService {
             filing.setSyncStatus("SYNCED");
             filing.setSyncedAt(LocalDateTime.now());
             log.info("E-way bill sync for {} on {}: {} new records", companyGST.getGstNumber(), req.getDate(), count);
-        } catch (ApiUsageLimitExceededException e) {
+        } catch (ApiUsageLimitExceededException | WhitebooksApiException e) {
             filing.setSyncStatus("FAILED");
             filingRepository.save(filing);
-            throw e; // hard block must surface, not be swallowed like other sync failures below
+            throw e; // limit hit / e-way bill portal error must reach the user, not a silent FAILED row
         } catch (Exception e) {
             filing.setSyncStatus("FAILED");
             log.error("E-way bill sync failed: {}", e.getMessage());
@@ -108,14 +108,7 @@ public class EwaybillSyncService {
                 .queryParam("ewbNo", ewbNo)
                 .toUriString();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("ip_address", creds.getIpAddress());
-        headers.set("client_id", creds.getClientId());
-        headers.set("client_secret", creds.getClientSecret());
-        headers.set("gstin", companyGST.getGstNumber());
-
-        EwaybillDetailApiResponse d = restTemplate.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(headers), EwaybillDetailApiResponse.class).getBody();
+        EwaybillDetailApiResponse d = client.getData(url, ewbHeaders(companyGST), EwaybillDetailApiResponse.class);
 
         if (d == null) throw new RuntimeException("No response from e-way bill API for ewbNo: " + ewbNo);
 
@@ -263,5 +256,30 @@ public class EwaybillSyncService {
         filing.setSyncStatus("EXCEL");
         filing.setSyncedAt(LocalDateTime.now());
         return filingRepository.save(filing);
+    }
+
+    /**
+     * e-Way Bill uses its own Whitebooks key pair (not the GST one).
+     * TODO: Whitebooks also requires a prior /authenticate call with the GSTIN's e-way bill
+     * portal API username/password, and a "user_name" header on every call. Those per-GSTIN
+     * credentials are not stored anywhere yet, so live e-way bill sync will fail until added.
+     */
+    private HttpHeaders ewbHeaders(CompanyGST companyGST) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("ip_address", creds.getIpAddress());
+        headers.set("client_id", creds.getEwaybillClientId());
+        headers.set("client_secret", creds.getEwaybillClientSecret());
+        headers.set("gstin", companyGST.getGstNumber());
+        return headers;
+    }
+
+    /** The app stores dates as yyyy-MM-dd; the e-way bill API only accepts dd/MM/yyyy (else error 601). */
+    static String toEwbDate(String date) {
+        if (date == null) return null;
+        String d = date.trim();
+        if (d.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            return d.substring(8, 10) + "/" + d.substring(5, 7) + "/" + d.substring(0, 4);
+        }
+        return d; // assume already dd/MM/yyyy
     }
 }

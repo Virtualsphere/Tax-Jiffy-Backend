@@ -1,21 +1,23 @@
 package com.gst_reconsilation.gstr1.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
+import com.gst_reconsilation.config.GstApiCredentialsProperties;
 import com.gst_reconsilation.gstr1.entity.*;
 import com.gst_reconsilation.gstr1.repository.*;
-import com.gst_reconsilation.gstr1.dto.ApiCredentials;
 import com.gst_reconsilation.gstr1.dto.SyncRequest;
 import com.gst_reconsilation.gstr1.dto.SyncResponse;
 import com.gst_reconsilation.gstr1.dto.api.*;
+import com.gst_reconsilation.whitebooks.GstPeriods;
+import com.gst_reconsilation.whitebooks.WhitebooksApiException;
+import com.gst_reconsilation.whitebooks.WhitebooksClient;
+import com.gst_reconsilation.whitebooks.session.GstAuthService;
+import com.gst_reconsilation.whitebooks.session.GstSessionRequiredException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
@@ -45,11 +47,9 @@ public class Gstr1SyncService {
     private final Gstr1ExempRepository      exempRepository;
     private final Gstr1HsnB2bRepository     hsnB2bRepository;
     private final Gstr1HsnB2cRepository     hsnB2cRepository;
-    private final RestTemplate              restTemplate;
-    private final ObjectMapper              objectMapper;
-
-    @Value("${gstr1.api.base-url:https://apisandbox.whitebooks.in/gstr1}")
-    private String baseUrl;
+    private final WhitebooksClient          client;
+    private final GstAuthService            gstAuthService;
+    private final GstApiCredentialsProperties props;
 
     private static final DateTimeFormatter API_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
@@ -61,6 +61,11 @@ public class Gstr1SyncService {
     public SyncResponse sync(SyncRequest req, Integer userId) {
         CompanyGST companyGST = companyGSTRepository.findById(req.getCompanyGstId())
                 .orElseThrow(() -> new RuntimeException("CompanyGST not found: " + req.getCompanyGstId()));
+
+        // Fails fast with HTTP 428 before touching any data if there is no verified GST session
+        HttpHeaders headers = gstAuthService.headersFor(companyGST.getId());
+        SyncCtx ctx = new SyncCtx(companyGST.getId(), companyGST.getGstNumber(),
+                GstPeriods.toRetPeriod(req.getFinancialYear(), req.getTaxPeriod()), headers);
 
         // Get or create filing record
         Gstr1Filing filing = filingRepository
@@ -81,43 +86,49 @@ public class Gstr1SyncService {
         // Delete existing rows before re-syncing
         clearExistingRows(filing.getId());
 
-        ApiCredentials creds = req.getCredentials();
         int b2b = 0, b2cs = 0, b2csa = 0, b2cla = 0;
         int cdnr = 0, cdnur = 0, cdnura = 0;
         int exp = 0, expa = 0, at = 0, ata = 0;
         int exemp = 0, hsnB2b = 0, hsnB2c = 0;
 
         // Fetch and persist each sheet
-        b2b   = syncB2b(filing, creds);
-        b2cs  = syncB2cs(filing, creds);
-        b2csa = syncB2csa(filing, creds);
-        b2cla = syncB2cla(filing, creds);
-        cdnr  = syncCdnr(filing, creds);
-        cdnur = syncCdnur(filing, creds);
-        cdnura = syncCdnura(filing, creds);
-        exp   = syncExp(filing, creds);
-        expa  = syncExpa(filing, creds);
-        at    = syncAt(filing, creds);
-        ata   = syncTxp(filing, creds);   // TXP → Gstr1Ata
-        exemp = syncNil(filing, creds);
-        int[] hsn = syncHsn(filing, creds);
+        b2b   = syncB2b(filing, ctx);
+        b2cs  = syncB2cs(filing, ctx);
+        b2csa = syncB2csa(filing, ctx);
+        b2cla = syncB2cla(filing, ctx);
+        cdnr  = syncCdnr(filing, ctx);
+        cdnur = syncCdnur(filing, ctx);
+        cdnura = syncCdnura(filing, ctx);
+        exp   = syncExp(filing, ctx);
+        expa  = syncExpa(filing, ctx);
+        at    = syncAt(filing, ctx);
+        ata   = syncTxp(filing, ctx);   // TXP → Gstr1Ata
+        exemp = syncNil(filing, ctx);
+        int[] hsn = syncHsn(filing, ctx);
         hsnB2b = hsn[0];
         hsnB2c = hsn[1];
 
         int total = b2b+b2cs+b2csa+b2cla+cdnr+cdnur+cdnura
                 +exp+expa+at+ata+exemp+hsnB2b+hsnB2c;
 
+        if (ctx.errors.size() >= SECTION_COUNT) {
+            // Every section failed: throwing rolls back the row deletion above, so previous data is kept
+            throw new WhitebooksApiException("GSTR1_SYNC_FAILED",
+                    "GSTR-1 sync failed for every section. First error: " + ctx.errors.get(0));
+        }
+
         filing.setFilingStatus("SYNCED");
         filing.setUpdatedDate(LocalDate.now());
         filingRepository.save(filing);
 
-        log.info("Sync complete for filing {}: {} total rows", filing.getId(), total);
+        log.info("Sync complete for filing {}: {} total rows, {} section errors", filing.getId(), total, ctx.errors.size());
 
         return SyncResponse.builder()
                 .filingId(filing.getId())
                 .financialYear(req.getFinancialYear())
                 .taxPeriod(req.getTaxPeriod())
                 .status("SYNCED")
+                .errors(ctx.errors)
                 .totalRowsSynced(total)
                 .b2bRows(b2b).b2csRows(b2cs).b2csaRows(b2csa).b2claRows(b2cla)
                 .cdnrRows(cdnr).cdnurRows(cdnur).cdnuraRows(cdnura)
@@ -130,9 +141,9 @@ public class Gstr1SyncService {
     //  PER-SHEET SYNC METHODS
     // ─────────────────────────────────────────────────────────────
 
-    private int syncB2b(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncB2b(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            B2bApiResponse resp = get("/b2b", creds, B2bApiResponse.class);
+            B2bApiResponse resp = get("/b2b", ctx, B2bApiResponse.class);
             if (resp == null || resp.getB2b() == null) return 0;
 
             List<Gstr1B2b> rows = new ArrayList<>();
@@ -162,14 +173,14 @@ public class Gstr1SyncService {
             }
             return b2bRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("B2B sync failed: {}", e.getMessage());
+            ctx.fail("B2B", e);
             return 0;
         }
     }
 
-    private int syncB2cs(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncB2cs(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            B2csApiResponse resp = get("/b2cs", creds, B2csApiResponse.class);
+            B2csApiResponse resp = get("/b2cs", ctx, B2csApiResponse.class);
             if (resp == null || resp.getB2cs() == null) return 0;
 
             List<Gstr1B2cs> rows = new ArrayList<>();
@@ -187,14 +198,14 @@ public class Gstr1SyncService {
             }
             return b2csRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("B2CS sync failed: {}", e.getMessage());
+            ctx.fail("B2CS", e);
             return 0;
         }
     }
 
-    private int syncB2csa(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncB2csa(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            B2csaApiResponse resp = get("/b2csa", creds, B2csaApiResponse.class);
+            B2csaApiResponse resp = get("/b2csa", ctx, B2csaApiResponse.class);
             if (resp == null || resp.getB2csa() == null) return 0;
 
             List<Gstr1B2csa> rows = new ArrayList<>();
@@ -216,14 +227,14 @@ public class Gstr1SyncService {
             }
             return b2csaRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("B2CSA sync failed: {}", e.getMessage());
+            ctx.fail("B2CSA", e);
             return 0;
         }
     }
 
-    private int syncB2cla(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncB2cla(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            B2claApiResponse resp = get("/b2cla", creds, B2claApiResponse.class);
+            B2claApiResponse resp = get("/b2cla", ctx, B2claApiResponse.class);
             if (resp == null || resp.getB2cla() == null) return 0;
 
             List<Gstr1B2cla> rows = new ArrayList<>();
@@ -252,14 +263,14 @@ public class Gstr1SyncService {
             }
             return b2claRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("B2CLA sync failed: {}", e.getMessage());
+            ctx.fail("B2CLA", e);
             return 0;
         }
     }
 
-    private int syncCdnr(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncCdnr(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            CdnrApiResponse resp = get("/cdnr", creds, CdnrApiResponse.class);
+            CdnrApiResponse resp = get("/cdnr", ctx, CdnrApiResponse.class);
             if (resp == null || resp.getCdnr() == null) return 0;
 
             List<Gstr1Cdnr> rows = new ArrayList<>();
@@ -289,14 +300,14 @@ public class Gstr1SyncService {
             }
             return cdnrRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("CDNR sync failed: {}", e.getMessage());
+            ctx.fail("CDNR", e);
             return 0;
         }
     }
 
-    private int syncCdnur(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncCdnur(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            CdnurApiResponse resp = get("/cdnur", creds, CdnurApiResponse.class);
+            CdnurApiResponse resp = get("/cdnur", ctx, CdnurApiResponse.class);
             if (resp == null || resp.getCdnur() == null) return 0;
 
             List<Gstr1Cdnur> rows = new ArrayList<>();
@@ -321,14 +332,14 @@ public class Gstr1SyncService {
             }
             return cdnurRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("CDNUR sync failed: {}", e.getMessage());
+            ctx.fail("CDNUR", e);
             return 0;
         }
     }
 
-    private int syncCdnura(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncCdnura(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            CdnuraApiResponse resp = get("/cdnura", creds, CdnuraApiResponse.class);
+            CdnuraApiResponse resp = get("/cdnura", ctx, CdnuraApiResponse.class);
             if (resp == null || resp.getCdnura() == null) return 0;
 
             List<Gstr1Cdnura> rows = new ArrayList<>();
@@ -355,14 +366,14 @@ public class Gstr1SyncService {
             }
             return cdnuraRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("CDNURA sync failed: {}", e.getMessage());
+            ctx.fail("CDNURA", e);
             return 0;
         }
     }
 
-    private int syncExp(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncExp(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            ExpApiResponse resp = get("/exp", creds, ExpApiResponse.class);
+            ExpApiResponse resp = get("/exp", ctx, ExpApiResponse.class);
             if (resp == null || resp.getExp() == null) return 0;
 
             List<Gstr1Exp> rows = new ArrayList<>();
@@ -390,14 +401,14 @@ public class Gstr1SyncService {
             }
             return expRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("EXP sync failed: {}", e.getMessage());
+            ctx.fail("EXP", e);
             return 0;
         }
     }
 
-    private int syncExpa(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncExpa(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            ExpaApiResponse resp = get("/expa", creds, ExpaApiResponse.class);
+            ExpaApiResponse resp = get("/expa", ctx, ExpaApiResponse.class);
             if (resp == null || resp.getExpa() == null) return 0;
 
             List<Gstr1Expa> rows = new ArrayList<>();
@@ -427,14 +438,14 @@ public class Gstr1SyncService {
             }
             return expaRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("EXPA sync failed: {}", e.getMessage());
+            ctx.fail("EXPA", e);
             return 0;
         }
     }
 
-    private int syncAt(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncAt(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            AtApiResponse resp = get("/at", creds, AtApiResponse.class);
+            AtApiResponse resp = get("/at", ctx, AtApiResponse.class);
             if (resp == null || resp.getAt() == null) return 0;
 
             List<Gstr1At> rows = new ArrayList<>();
@@ -449,7 +460,7 @@ public class Gstr1SyncService {
             }
             return atRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("AT sync failed: {}", e.getMessage());
+            ctx.fail("AT", e);
             return 0;
         }
     }
@@ -473,10 +484,10 @@ public class Gstr1SyncService {
         return rows;
     }
 
-    private int syncTxp(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncTxp(Gstr1Filing filing, SyncCtx ctx) {
         // TXP (advance paid/adjusted) → stored in Gstr1Ata
         try {
-            TxpApiResponse resp = get("/txp", creds, TxpApiResponse.class);
+            TxpApiResponse resp = get("/txp", ctx, TxpApiResponse.class);
             if (resp == null || resp.getTxpd() == null) return 0;
 
             List<Gstr1Ata> rows = new ArrayList<>();
@@ -491,7 +502,7 @@ public class Gstr1SyncService {
             }
             return ataRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("TXP sync failed: {}", e.getMessage());
+            ctx.fail("TXP", e);
             return 0;
         }
     }
@@ -517,10 +528,10 @@ public class Gstr1SyncService {
         return rows;
     }
 
-    private int syncNil(Gstr1Filing filing, ApiCredentials creds) {
+    private int syncNil(Gstr1Filing filing, SyncCtx ctx) {
         // NIL → Gstr1Exemp
         try {
-            NilApiResponse resp = get("/nil", creds, NilApiResponse.class);
+            NilApiResponse resp = get("/nil", ctx, NilApiResponse.class);
             if (resp == null || resp.getNil() == null || resp.getNil().getInv() == null) return 0;
 
             List<Gstr1Exemp> rows = new ArrayList<>();
@@ -536,14 +547,14 @@ public class Gstr1SyncService {
             }
             return exempRepository.saveAll(rows).size();
         } catch (Exception e) {
-            log.error("NIL sync failed: {}", e.getMessage());
+            ctx.fail("NIL", e);
             return 0;
         }
     }
 
-    private int[] syncHsn(Gstr1Filing filing, ApiCredentials creds) {
+    private int[] syncHsn(Gstr1Filing filing, SyncCtx ctx) {
         try {
-            HsnApiResponse resp = get("/hsnsum", creds, HsnApiResponse.class);
+            HsnApiResponse resp = get("/hsnsum", ctx, HsnApiResponse.class);
             if (resp == null || resp.getHsn() == null) return new int[]{0, 0};
 
             List<Gstr1HsnB2b> b2bRows = new ArrayList<>();
@@ -582,7 +593,7 @@ public class Gstr1SyncService {
                     hsnB2cRepository.saveAll(b2cRows).size()
             };
         } catch (Exception e) {
-            log.error("HSN sync failed: {}", e.getMessage());
+            ctx.fail("HSN", e);
             return new int[]{0, 0};
         }
     }
@@ -591,25 +602,48 @@ public class Gstr1SyncService {
     //  HTTP HELPER — builds URL, attaches query params + headers
     // ─────────────────────────────────────────────────────────────
 
-    private <T> T get(String path, ApiCredentials creds, Class<T> type) {
-        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + path)
-                .queryParam("email",     creds.getEmail())
-                .queryParam("gstin",     creds.getGstin())
-                .queryParam("retperiod", creds.getRetperiod())
+    private <T> T get(String path, SyncCtx ctx, Class<T> type) {
+        String url = UriComponentsBuilder.fromHttpUrl(props.getBaseUrl() + "/gstr1" + path)
+                .queryParam("email",     props.getEmail())
+                .queryParam("gstin",     ctx.gstin)
+                .queryParam("retperiod", ctx.retPeriod)
                 .toUriString();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("gst_username",   creds.getGstUsername());
-        headers.set("state_cd",       creds.getStateCd());
-        headers.set("ip_address",     creds.getIpAddress());
-        headers.set("txn",            creds.getTxn());
-        headers.set("client_id",      creds.getClientId());
-        headers.set("client_secreat", creds.getClientSecret()); // API uses this typo
-
-        ResponseEntity<T> resp = restTemplate.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(headers), type);
-        return resp.getBody();
+        try {
+            return client.getData(url, ctx.headers, type);
+        } catch (WhitebooksApiException e) {
+            throw gstAuthService.handleCallFailure(ctx.companyGstId, e);
+        }
     }
+
+    /** Per-sync state: session headers plus the errors collected from individual sections. */
+    private static final class SyncCtx {
+        final Integer companyGstId;
+        final String gstin;
+        final String retPeriod;
+        final HttpHeaders headers;
+        final List<String> errors = new ArrayList<>();
+
+        SyncCtx(Integer companyGstId, String gstin, String retPeriod, HttpHeaders headers) {
+            this.companyGstId = companyGstId;
+            this.gstin = gstin;
+            this.retPeriod = retPeriod;
+            this.headers = headers;
+        }
+
+        /**
+         * Records a section failure. GSTN answers "no invoices" for empty sections with an error,
+         * which is a normal empty result, not a failure. An expired session aborts the whole sync.
+         */
+        void fail(String section, Exception e) {
+            if (e instanceof GstSessionRequiredException sessionEx) throw sessionEx;
+            if (WhitebooksApiException.isNoData(e)) return;
+            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            log.error("GSTR-1 {} sync failed: {}", section, msg);
+            errors.add(section + ": " + msg);
+        }
+    }
+
+    private static final int SECTION_COUNT = 13;
 
     // ─────────────────────────────────────────────────────────────
     //  CLEANUP — delete all rows before re-sync

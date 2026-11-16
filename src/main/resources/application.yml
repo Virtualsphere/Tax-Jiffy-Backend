@@ -3,6 +3,10 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  config:
+    # Whitebooks API keys live in this gitignored file (see application-secrets.yml.example).
+    # Values there override this file; server environment variables override both.
+    import: optional:classpath:application-secrets.yml
   datasource:
     url: jdbc:mysql://localhost:3306/gst_reconciliation_system
     username: root
@@ -37,21 +41,21 @@ jwt:
   secret: 49827016d37870f03fa2bb5d391ab441ba7057ec3412ce6dca12c3f7baf61db5
   expiration-ms: 86400000
 
-gstr1:
-  api:
-    base-url: https://apisandbox.whitebooks.in/gstr1
-
+# Whitebooks. Keys come from the Developer Hub -> API Keys, one pair per product.
+# GST_API_BASE_URL: https://apisandbox.whitebooks.in (sandbox) or the production host from Whitebooks.
 gst:
   api:
-    email: Shekhupoonia@gmail.com
-    gst-username: MH_NT2.1641
-    state-cd: "27"
-    ip-address: 49.37.135.42
-    client-id: ${GST_CLIENT_ID}
-    client-secret: ${GST_CLIENT_SECRET}
-    einvoice-base-url: https://apisandbox.whitebooks.in/gst/einvoice
-    ewaybill-base-url: https://apisandbox.whitebooks.in/ewaybillapi/v1.03/ewayapi
-    ims-base-url: https://apisandbox.whitebooks.in/ims
+    email: ${GST_API_EMAIL:taxjiffy@gmail.com}
+    ip-address: ${GST_API_IP_ADDRESS:49.37.135.42}
+    base-url: ${GST_API_BASE_URL:https://apisandbox.whitebooks.in}
+    client-id: ${GST_CLIENT_ID:}
+    client-secret: ${GST_CLIENT_SECRET:}
+    session-minutes: 360
+    einvoice-base-url: ${gst.api.base-url}/gst/einvoice
+    ims-base-url: ${gst.api.base-url}/ims
+    ewaybill-base-url: ${EWB_API_BASE_URL:https://apisandbox.whitebooks.in}/ewaybillapi/v1.03/ewayapi
+    ewaybill-client-id: ${EWB_CLIENT_ID:}
+    ewaybill-client-secret: ${EWB_CLIENT_SECRET:}
 
 app:
   excel:

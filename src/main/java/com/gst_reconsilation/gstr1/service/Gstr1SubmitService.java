@@ -10,12 +10,15 @@ import com.gst_reconsilation.gstr1.entity.*;
 import com.gst_reconsilation.gstr1.repository.Gstr1FilingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import com.gst_reconsilation.config.GstApiCredentialsProperties;
+import com.gst_reconsilation.whitebooks.GstPeriods;
+import com.gst_reconsilation.whitebooks.WhitebooksApiException;
+import com.gst_reconsilation.whitebooks.WhitebooksClient;
+import com.gst_reconsilation.whitebooks.session.GstAuthService;
+import com.gst_reconsilation.whitebooks.session.GstSessionRequiredException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
@@ -53,11 +56,10 @@ public class Gstr1SubmitService {
 
     private final Gstr1FilingRepository filingRepository;
     private final Gstr1UploadService uploadService;
-    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-
-    @Value("${gstr1.api.submit-base-url:https://apisandbox.whitebooks.in}")
-    private String baseUrl;
+    private final WhitebooksClient client;
+    private final GstAuthService gstAuthService;
+    private final GstApiCredentialsProperties props;
 
     private static final DateTimeFormatter ENTITY_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
@@ -70,7 +72,7 @@ public class Gstr1SubmitService {
 
         WhitebooksGstr1Payload payload = new WhitebooksGstr1Payload();
         payload.setGstin(filing.getCompanyGST() != null ? filing.getCompanyGST().getGstNumber() : null);
-        payload.setFp(filing.getTaxPeriod());
+        payload.setFp(GstPeriods.toRetPeriod(filing.getFinancialYear(), filing.getTaxPeriod()));
         payload.setGt(nz(grossTurnover));
         payload.setCurGt(nz(currentGrossTurnover));
 
@@ -109,28 +111,23 @@ public class Gstr1SubmitService {
                 .orElseThrow(() -> new RuntimeException("Gstr1Filing not found: " + filingId));
 
         WhitebooksGstr1Payload payload = buildSubmitPayload(filingId, creds.getGrossTurnover(), creds.getCurrentGrossTurnover());
-        payload.setGstin(filing.getCompanyGST() != null ? filing.getCompanyGST().getGstNumber() : creds.getGstin());
-        payload.setFp(filing.getTaxPeriod());
+        payload.setFp(GstPeriods.toRetPeriod(filing.getFinancialYear(), filing.getTaxPeriod()));
 
-        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/gstr1/retsave")
-                .queryParam("email", creds.getEmail())
+        Integer companyGstId = filing.getCompanyGST() != null ? filing.getCompanyGST().getId() : null;
+        if (companyGstId == null) throw new RuntimeException("Filing " + filingId + " has no company GST");
+
+        // Server-side session (HTTP 428 if not verified); client-sent keys/txn are ignored
+        HttpHeaders headers = gstAuthService.headersFor(companyGstId);
+        headers.set("gstin", payload.getGstin());
+        headers.set("ret_period", payload.getFp());
+
+        String url = UriComponentsBuilder.fromHttpUrl(props.getBaseUrl() + "/gstr1/retsave")
+                .queryParam("email", props.getEmail())
                 .toUriString();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("gstin", creds.getGstin());
-        headers.set("ret_period", creds.getRetPeriod());
-        headers.set("gst_username", creds.getGstUsername());
-        headers.set("state_cd", creds.getStateCd());
-        headers.set("ip_address", creds.getIpAddress());
-        headers.set("txn", creds.getTxn());
-        headers.set("client_id", creds.getClientId());
-        headers.set("client_secret", creds.getClientSecret());
-
         try {
-            ResponseEntity<String> resp = restTemplate.exchange(
-                    url, HttpMethod.PUT, new HttpEntity<>(payload, headers), String.class);
-            String body = resp.getBody();
+            JsonNode resp = client.put(url, headers, payload);
+            String body = resp.toString();
             String arn = extractArn(body);
 
             filing.setFilingStatus("FILED");
@@ -142,19 +139,21 @@ public class Gstr1SubmitService {
             filingRepository.save(filing);
 
             log.info("Gstr1Filing {} submitted successfully, arn={}", filingId, arn);
-            return Gstr1SubmitResult.builder().success(true).httpStatus(resp.getStatusCode().value())
+            return Gstr1SubmitResult.builder().success(true).httpStatus(200)
                     .message("Filed successfully").arn(arn).rawResponse(body).build();
 
-        } catch (HttpStatusCodeException e) {
-            String body = e.getResponseBodyAsString();
-            filing.setSubmitResponseRaw(body);
+        } catch (WhitebooksApiException e) {
+            RuntimeException mapped = gstAuthService.handleCallFailure(companyGstId, e);
+            if (mapped instanceof GstSessionRequiredException) throw mapped;
+
+            filing.setSubmitResponseRaw(e.getMessage());
             filing.setUpdatedBy(userId);
             filing.setUpdatedDate(LocalDate.now());
             filingRepository.save(filing);
 
-            log.error("Gstr1Filing {} submission failed: {} - {}", filingId, e.getStatusCode(), body);
-            return Gstr1SubmitResult.builder().success(false).httpStatus(e.getStatusCode().value())
-                    .message("Submission failed").rawResponse(body).build();
+            log.error("Gstr1Filing {} submission rejected: {}", filingId, e.getMessage());
+            return Gstr1SubmitResult.builder().success(false).httpStatus(502)
+                    .message("Submission failed: " + e.getMessage()).rawResponse(e.getMessage()).build();
         }
     }
 

@@ -11,12 +11,18 @@ spring:
 jwt:
   secret: <generate one: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))">
 
-# Sandbox GST API credentials. Replace with the real sandbox values if you need
-# the e-invoice / e-way bill / IMS sync endpoints to work locally.
+# Whitebooks API keys: developer.whitebooks.in -> API Keys.
+# GST keys cover GSTR-1, GSTR-2B, IMS and the e-Invoice page.
+# Sandbox host: https://apisandbox.whitebooks.in  (use the "Sandbox" key set)
+# Production:   https://api.whitebooks.in         (use the "Production" key set)
 gst:
   api:
-    client-id: local-dev-unset
-    client-secret: local-dev-unset
+    base-url: https://api.whitebooks.in
+    client-id: <GST client id>
+    client-secret: <GST client secret>
+    # e-Way Bill keys (separate key set; production is not enabled yet)
+    ewaybill-client-id: <e-Way Bill client id>
+    ewaybill-client-secret: <e-Way Bill client secret>
 
 # Production config uses Linux paths (/home/aditya/...) which land in C:\home\aditya
 # on Windows. Keep local uploads inside the project instead.

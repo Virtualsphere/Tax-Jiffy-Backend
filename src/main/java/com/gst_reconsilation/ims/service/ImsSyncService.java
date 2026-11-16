@@ -15,10 +15,13 @@ import com.gst_reconsilation.ims.repository.ImsFilingRepository;
 import com.gst_reconsilation.ims.repository.ImsInvoiceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import com.gst_reconsilation.whitebooks.WhitebooksApiException;
+import com.gst_reconsilation.whitebooks.WhitebooksClient;
+import com.gst_reconsilation.whitebooks.session.GstAuthService;
+import com.gst_reconsilation.whitebooks.session.GstSessionRequiredException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -28,7 +31,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -39,7 +41,8 @@ public class ImsSyncService {
     private final ImsFilingRepository filingRepository;
     private final ImsInvoiceRepository invoiceRepository;
     private final ImsExcelParserService excelParserService;
-    private final RestTemplate restTemplate;
+    private final WhitebooksClient client;
+    private final GstAuthService gstAuthService;
     private final GstApiCredentialsProperties creds;
     private final ApiUsageService apiUsageService;
 
@@ -58,7 +61,7 @@ public class ImsSyncService {
         int rows;
         try {
             apiUsageService.recordAndEnforce(companyGST.getId(), "IMS");
-            ImsApiResponse resp = callIms(companyGST.getGstNumber(), req, filing.getRetPeriod());
+            ImsApiResponse resp = callIms(companyGST, req, filing.getRetPeriod());
             invoiceRepository.deleteByFiling_Id(filing.getId()); // full-refresh on re-sync, same pattern as Gstr1/2
             List<ImsInvoice> flattened = new ArrayList<>();
             if (resp != null) {
@@ -68,10 +71,16 @@ public class ImsSyncService {
             rows = invoiceRepository.saveAll(flattened).size();
             filing.setSyncStatus("SYNCED");
             filing.setSyncedAt(LocalDateTime.now());
-        } catch (ApiUsageLimitExceededException e) {
+        } catch (ApiUsageLimitExceededException | GstSessionRequiredException e) {
             filing.setSyncStatus("FAILED");
             filingRepository.save(filing);
-            throw e; // hard block must surface, not be swallowed like other sync failures below
+            throw e; // must surface (limit hit / GST OTP needed), not be swallowed
+        } catch (WhitebooksApiException e) {
+            // Surface the GST portal's message instead of reporting an empty "successful" sync
+            log.error("IMS sync failed for filing {}: {}", filing.getId(), e.getMessage());
+            filing.setSyncStatus("FAILED");
+            filingRepository.save(filing);
+            throw e;
         } catch (Exception e) {
             log.error("IMS sync failed for filing {}: {}", filing.getId(), e.getMessage());
             filing.setSyncStatus("FAILED");
@@ -84,24 +93,20 @@ public class ImsSyncService {
                 .syncStatus(filing.getSyncStatus()).rowsSynced(rows).build();
     }
 
-    private ImsApiResponse callIms(String gstin, ImsSyncRequest req, String retPeriod) {
-        String url = UriComponentsBuilder.fromHttpUrl(creds.getImsBaseUrl() + "/supplierinvoices")
-                .queryParam("gstin", gstin)
+    private ImsApiResponse callIms(CompanyGST companyGST, ImsSyncRequest req, String retPeriod) {
+        HttpHeaders headers = gstAuthService.headersFor(companyGST.getId()); // HTTP 428 if no verified session
+        String url = UriComponentsBuilder.fromHttpUrl(creds.getImsBaseUrl() + "/supplierInvoices") // case-sensitive: "/supplierinvoices" -> WB_ERR_9404
+                .queryParam("gstin", companyGST.getGstNumber())
                 .queryParam("email", creds.getEmail())
                 .queryParam("retperiod", retPeriod)
                 .queryParam("section", req.getSection())
                 .queryParam("rtnTyp", req.getRtnTyp())
                 .toUriString();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("gst_username", creds.getGstUsername());
-        headers.set("state_cd", creds.getStateCd());
-        headers.set("ip_address", creds.getIpAddress());
-        headers.set("txn", UUID.randomUUID().toString().replace("-", ""));
-        headers.set("client_id", creds.getClientId());
-        headers.set("client_secret", creds.getClientSecret());
-
-        return restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), ImsApiResponse.class).getBody();
+        try {
+            return client.getData(url, headers, ImsApiResponse.class);
+        } catch (WhitebooksApiException e) {
+            throw gstAuthService.handleCallFailure(companyGST.getId(), e);
+        }
     }
 
     // ── 2. Excel bulk upload ─────────────────────────────────────
