@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminApiUsageService {
 
-    private static final List<String> API_TYPES = List.of("EINVOICE", "EWAYBILL", "IMS");
+    private static final List<String> API_TYPES = ApiUsageService.LIMITED_TYPES;
 
     private final CompanyGSTRepository companyGSTRepository;
     private final ApiUsageCounterRepository counterRepository;
@@ -60,6 +60,7 @@ public class AdminApiUsageService {
                 .apiType(apiType)
                 .periodKey(periodKey)
                 .callCount(callCount)
+                .totalCallCount(apiUsageService.totalUsed(gst.getId(), periodKey))
                 .effectiveLimit(apiUsageService.effectiveLimit(gst))
                 .planDefaultLimit(planDefault)
                 .override(gst.getApiCallLimitOverride())

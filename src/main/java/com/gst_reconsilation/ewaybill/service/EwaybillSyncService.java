@@ -54,7 +54,7 @@ public class EwaybillSyncService {
         filing = filingRepository.save(filing);
 
         try {
-            apiUsageService.recordAndEnforce(req.getCompanyGstId(), "EWAYBILL");
+            apiUsageService.recordAndEnforce(req.getCompanyGstId(), ApiUsageService.EWAYBILL);
             String listUrl = UriComponentsBuilder.fromHttpUrl(creds.getEwaybillBaseUrl() + "/getewaybillsbydate")
                     .queryParam("email", creds.getEmail())
                     .queryParam("date", toEwbDate(req.getDate()))
@@ -102,7 +102,7 @@ public class EwaybillSyncService {
     }
 
     private EwaybillRecord fetchAndSaveDetail(Long ewbNo, CompanyGST companyGST, EwaybillFiling filing, Integer userId) {
-        apiUsageService.recordAndEnforce(companyGST.getId(), "EWAYBILL");
+        apiUsageService.recordAndEnforce(companyGST.getId(), ApiUsageService.EWAYBILL);
         String url = UriComponentsBuilder.fromHttpUrl(creds.getEwaybillBaseUrl() + "/getewaybill")
                 .queryParam("email", creds.getEmail())
                 .queryParam("ewbNo", ewbNo)

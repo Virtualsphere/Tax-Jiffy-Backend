@@ -26,7 +26,7 @@ public class ApiUsageCounter {
     @JoinColumn(name = "CompanyGSTId", nullable = false)
     private CompanyGST companyGST;
 
-    /** EINVOICE | EWAYBILL | IMS */
+    /** GSTR1 | GSTR2B | IMS | EINVOICE | EWAYBILL (see ApiUsageService.LIMITED_TYPES) */
     @Column(name = "api_type", length = 20, nullable = false)
     private String apiType;
 
