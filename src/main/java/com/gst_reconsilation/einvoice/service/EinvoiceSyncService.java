@@ -16,6 +16,7 @@ import com.gst_reconsilation.whitebooks.WhitebooksApiException;
 import com.gst_reconsilation.whitebooks.WhitebooksClient;
 import com.gst_reconsilation.whitebooks.session.GstAuthService;
 import com.gst_reconsilation.whitebooks.session.GstSessionRequiredException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -93,18 +94,19 @@ public class EinvoiceSyncService {
                 .orElseThrow(() -> new RuntimeException("IRN not found in database: " + irn + ". Sync the period first."));
 
         String gstin = existing.getSupplierGstin();
-        apiUsageService.recordAndEnforce(existing.getFiling().getCompanyGST().getId(), "EINVOICE");
+        Integer companyGstId = existing.getFiling().getCompanyGST().getId();
+        HttpHeaders headers = gstAuthService.headersFor(companyGstId); // HTTP 428 before anything is counted
+        apiUsageService.recordAndEnforce(companyGstId, ApiUsageService.EINVOICE);
         String url = UriComponentsBuilder.fromHttpUrl(creds.getEinvoiceBaseUrl() + "/irndtl")
                 .queryParam("email", creds.getEmail())
                 .queryParam("gstin", gstin)
                 .queryParam("irn", irn)
                 .toUriString();
 
-        Integer companyGstId = existing.getFiling().getCompanyGST().getId();
         EinvoiceIrnDtlApiResponse resp;
         try {
             // EinvoiceIrnDtlApiResponse already models the {"data": {...}} wrapper itself
-            resp = client.rootAs(client.get(url, gstAuthService.headersFor(companyGstId)), EinvoiceIrnDtlApiResponse.class);
+            resp = client.rootAs(client.get(url, headers), EinvoiceIrnDtlApiResponse.class);
         } catch (WhitebooksApiException e) {
             throw gstAuthService.handleCallFailure(companyGstId, e);
         }
@@ -126,7 +128,7 @@ public class EinvoiceSyncService {
 
     private int syncHsnSummary(EinvoiceFiling filing, Integer companyGstId, String gstin) {
         try {
-            apiUsageService.recordAndEnforce(companyGstId, "EINVOICE");
+            apiUsageService.recordAndEnforce(companyGstId, ApiUsageService.EINVOICE);
             String url = UriComponentsBuilder.fromHttpUrl(creds.getEinvoiceBaseUrl() + "/hsnsum")
                     .queryParam("email", creds.getEmail())
                     .queryParam("gstin", gstin)
@@ -170,7 +172,7 @@ public class EinvoiceSyncService {
 
     private int syncIrnList(EinvoiceFiling filing, Integer companyGstId, String gstin, Integer userId) {
         try {
-            apiUsageService.recordAndEnforce(companyGstId, "EINVOICE");
+            apiUsageService.recordAndEnforce(companyGstId, ApiUsageService.EINVOICE);
             String url = UriComponentsBuilder.fromHttpUrl(creds.getEinvoiceBaseUrl() + "/irnlist")
                     .queryParam("email", creds.getEmail())
                     .queryParam("gstin", gstin)

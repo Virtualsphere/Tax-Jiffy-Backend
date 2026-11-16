@@ -1,5 +1,7 @@
 package com.gst_reconsilation.gstr1.service;
 
+import com.gst_reconsilation.apiusage.exception.ApiUsageLimitExceededException;
+import com.gst_reconsilation.apiusage.service.ApiUsageService;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.config.GstApiCredentialsProperties;
@@ -50,6 +52,7 @@ public class Gstr1SyncService {
     private final WhitebooksClient          client;
     private final GstAuthService            gstAuthService;
     private final GstApiCredentialsProperties props;
+    private final ApiUsageService           apiUsageService;
 
     private static final DateTimeFormatter API_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
@@ -64,6 +67,8 @@ public class Gstr1SyncService {
 
         // Fails fast with HTTP 428 before touching any data if there is no verified GST session
         HttpHeaders headers = gstAuthService.headersFor(companyGST.getId());
+        // HTTP 429 up front if the monthly API budget can't cover all 13 section calls
+        apiUsageService.ensureRemaining(companyGST.getId(), SECTION_COUNT, "GSTR-1 sync");
         SyncCtx ctx = new SyncCtx(companyGST.getId(), companyGST.getGstNumber(),
                 GstPeriods.toRetPeriod(req.getFinancialYear(), req.getTaxPeriod()), headers);
 
@@ -608,6 +613,7 @@ public class Gstr1SyncService {
                 .queryParam("gstin",     ctx.gstin)
                 .queryParam("retperiod", ctx.retPeriod)
                 .toUriString();
+        apiUsageService.recordAndEnforce(ctx.companyGstId, ApiUsageService.GSTR1);
         try {
             return client.getData(url, ctx.headers, type);
         } catch (WhitebooksApiException e) {
@@ -636,6 +642,7 @@ public class Gstr1SyncService {
          */
         void fail(String section, Exception e) {
             if (e instanceof GstSessionRequiredException sessionEx) throw sessionEx;
+            if (e instanceof ApiUsageLimitExceededException limitEx) throw limitEx;
             if (WhitebooksApiException.isNoData(e)) return;
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             log.error("GSTR-1 {} sync failed: {}", section, msg);

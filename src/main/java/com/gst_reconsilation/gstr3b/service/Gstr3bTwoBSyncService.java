@@ -1,5 +1,6 @@
 package com.gst_reconsilation.gstr3b.service;
 
+import com.gst_reconsilation.apiusage.service.ApiUsageService;
 import com.gst_reconsilation.gstr3b.dto.TwoBCredentials;
 import com.gst_reconsilation.gstr3b.dto.api.Gstr2bApiResponse;
 import com.gst_reconsilation.gstr3b.dto.api.Gstr2bApiResponse.*;
@@ -39,6 +40,7 @@ public class Gstr3bTwoBSyncService {
     private final WhitebooksClient client;
     private final GstAuthService gstAuthService;
     private final GstApiCredentialsProperties props;
+    private final ApiUsageService apiUsageService;
 
     private static final String[] BUCKETS = {"itcavl", "itcunavl", "itcrev", "itcRejected"};
     private static final String[] CATEGORIES = {"nonrevsup", "isdsup", "revsup", "imports", "othersup"};
@@ -87,6 +89,7 @@ public class Gstr3bTwoBSyncService {
             url.queryParam("filenum", req.getFilenum());
         }
 
+        apiUsageService.recordAndEnforce(companyGstId, ApiUsageService.GSTR2B); // HTTP 429 if over the monthly limit
         try {
             // Gstr2bApiResponse already models the {"data": {...}} wrapper itself
             return client.rootAs(client.get(url.toUriString(), headers), Gstr2bApiResponse.class);

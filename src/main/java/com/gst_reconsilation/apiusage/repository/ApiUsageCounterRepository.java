@@ -26,6 +26,13 @@ public interface ApiUsageCounterRepository extends JpaRepository<ApiUsageCounter
             @Param("apiType") String apiType,
             @Param("periodKey") String periodKey);
 
+    /** Total calls this GSTIN made in the period across the given API types (the limit is on this total). */
+    @Query("select coalesce(sum(c.callCount), 0) from ApiUsageCounter c "
+            + "where c.companyGST.id = :companyGstId and c.periodKey = :periodKey and c.apiType in :apiTypes")
+    long sumCalls(@Param("companyGstId") Integer companyGstId,
+                  @Param("periodKey") String periodKey,
+                  @Param("apiTypes") List<String> apiTypes);
+
     List<ApiUsageCounter> findByCompanyGST_Id(Integer companyGstId);
     List<ApiUsageCounter> findByPeriodKey(String periodKey);
 

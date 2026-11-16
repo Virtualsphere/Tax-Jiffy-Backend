@@ -1,6 +1,8 @@
 package com.gst_reconsilation.whitebooks.session;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.gst_reconsilation.apiusage.entity.GstOtpEvent;
+import com.gst_reconsilation.apiusage.service.OtpUsageService;
 import com.gst_reconsilation.company.entity.CompanyGST;
 import com.gst_reconsilation.company.repository.CompanyGSTRepository;
 import com.gst_reconsilation.config.GstApiCredentialsProperties;
@@ -30,6 +32,7 @@ public class GstAuthService {
     private final CompanyGSTRepository companyGSTRepository;
     private final GstApiCredentialsProperties props;
     private final WhitebooksClient client;
+    private final OtpUsageService otpUsageService;
 
     @Transactional
     public GstSessionDtos.SessionStatus requestOtp(Integer companyGstId, String gstUsername, Integer userId) {
@@ -53,12 +56,17 @@ public class GstAuthService {
         String url = UriComponentsBuilder.fromHttpUrl(props.getBaseUrl() + "/authentication/otprequest")
                 .queryParam("email", props.getEmail())
                 .toUriString();
-        JsonNode resp = client.get(url, baseHeaders(session));
-
-        String txn = extractTxn(resp);
-        if (txn == null) {
-            throw new WhitebooksApiException("WB_NO_TXN", "OTP was requested but Whitebooks did not return a txn");
+        String txn;
+        try {
+            txn = extractTxn(client.get(url, baseHeaders(session)));
+            if (txn == null) {
+                throw new WhitebooksApiException("WB_NO_TXN", "OTP was requested but Whitebooks did not return a txn");
+            }
+        } catch (RuntimeException e) {
+            otpUsageService.record(companyGstId, gstin, userId, GstOtpEvent.REQUEST, false, e.getMessage());
+            throw e;
         }
+        otpUsageService.record(companyGstId, gstin, userId, GstOtpEvent.REQUEST, true, null);
 
         session.setTxn(txn);
         session.setStatus(GstApiSession.OTP_SENT);
@@ -86,7 +94,14 @@ public class GstAuthService {
                 .toUriString();
         HttpHeaders headers = baseHeaders(session);
         headers.set("txn", session.getTxn());
-        JsonNode resp = client.get(url, headers);
+        JsonNode resp;
+        try {
+            resp = client.get(url, headers);
+        } catch (RuntimeException e) {
+            otpUsageService.record(companyGstId, session.getGstin(), userId, GstOtpEvent.VERIFY, false, e.getMessage());
+            throw e;
+        }
+        otpUsageService.record(companyGstId, session.getGstin(), userId, GstOtpEvent.VERIFY, true, null);
 
         String txn = extractTxn(resp);
         if (txn != null) session.setTxn(txn);

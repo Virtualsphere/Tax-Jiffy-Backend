@@ -60,7 +60,6 @@ public class ImsSyncService {
 
         int rows;
         try {
-            apiUsageService.recordAndEnforce(companyGST.getId(), "IMS");
             ImsApiResponse resp = callIms(companyGST, req, filing.getRetPeriod());
             invoiceRepository.deleteByFiling_Id(filing.getId()); // full-refresh on re-sync, same pattern as Gstr1/2
             List<ImsInvoice> flattened = new ArrayList<>();
@@ -102,6 +101,8 @@ public class ImsSyncService {
                 .queryParam("section", req.getSection())
                 .queryParam("rtnTyp", req.getRtnTyp())
                 .toUriString();
+        // Counted only once the session check above passed: a 428 must not use up a call
+        apiUsageService.recordAndEnforce(companyGST.getId(), ApiUsageService.IMS);
         try {
             return client.getData(url, headers, ImsApiResponse.class);
         } catch (WhitebooksApiException e) {

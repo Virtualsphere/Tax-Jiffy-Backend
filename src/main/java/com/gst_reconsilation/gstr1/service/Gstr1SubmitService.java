@@ -2,6 +2,7 @@ package com.gst_reconsilation.gstr1.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gst_reconsilation.apiusage.service.ApiUsageService;
 import com.gst_reconsilation.gstr1.dto.Gstr1SubmitCredentials;
 import com.gst_reconsilation.gstr1.dto.Gstr1SubmitResult;
 import com.gst_reconsilation.gstr1.dto.api.WhitebooksGstr1Payload;
@@ -60,6 +61,7 @@ public class Gstr1SubmitService {
     private final WhitebooksClient client;
     private final GstAuthService gstAuthService;
     private final GstApiCredentialsProperties props;
+    private final ApiUsageService apiUsageService;
 
     private static final DateTimeFormatter ENTITY_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
@@ -125,6 +127,7 @@ public class Gstr1SubmitService {
                 .queryParam("email", props.getEmail())
                 .toUriString();
 
+        apiUsageService.recordAndEnforce(companyGstId, ApiUsageService.GSTR1); // HTTP 429 if over the monthly limit
         try {
             JsonNode resp = client.put(url, headers, payload);
             String body = resp.toString();
