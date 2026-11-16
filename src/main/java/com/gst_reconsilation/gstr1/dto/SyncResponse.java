@@ -12,6 +12,8 @@ public class SyncResponse {
     private String taxPeriod;
     private String status;
     private int totalRowsSynced;
+    /** Sections that failed (e.g. "B2B: <GST portal message>"). Empty when everything synced. */
+    private java.util.List<String> errors;
     // Per-sheet counts
     private int b2bRows;
     private int b2csRows;

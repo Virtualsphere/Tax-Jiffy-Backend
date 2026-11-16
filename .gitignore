@@ -36,3 +36,5 @@ build/
 ### Local secrets (never commit)
 src/main/resources/application-local.yml
 local-uploads/
+
+src/main/resources/application-secrets.yml

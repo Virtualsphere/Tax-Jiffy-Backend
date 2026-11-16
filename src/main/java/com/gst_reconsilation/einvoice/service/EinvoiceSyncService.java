@@ -12,10 +12,12 @@ import com.gst_reconsilation.einvoice.entity.*;
 import com.gst_reconsilation.einvoice.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import com.gst_reconsilation.whitebooks.WhitebooksApiException;
+import com.gst_reconsilation.whitebooks.WhitebooksClient;
+import com.gst_reconsilation.whitebooks.session.GstAuthService;
+import com.gst_reconsilation.whitebooks.session.GstSessionRequiredException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -24,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,7 +37,8 @@ public class EinvoiceSyncService {
     private final EinvoiceFilingRepository filingRepository;
     private final EinvoiceIrnRepository irnRepository;
     private final EinvoiceHsnSummaryRepository hsnRepository;
-    private final RestTemplate restTemplate;
+    private final WhitebooksClient client;
+    private final GstAuthService gstAuthService;
     private final GstApiCredentialsProperties creds;
     private final EinvoiceExcelParserService excelParserService;
     private final ApiUsageService apiUsageService;
@@ -53,6 +55,9 @@ public class EinvoiceSyncService {
                         .retPeriod(req.getRetPeriod())
                         .createdBy(userId)
                         .build());
+
+        // HTTP 428 before touching any data if there is no verified GST session
+        gstAuthService.activeSession(companyGST.getId());
 
         filing.setSyncStatus("SYNCING");
         filing = filingRepository.save(filing);
@@ -95,8 +100,14 @@ public class EinvoiceSyncService {
                 .queryParam("irn", irn)
                 .toUriString();
 
-        EinvoiceIrnDtlApiResponse resp = restTemplate.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(commonHeaders()), EinvoiceIrnDtlApiResponse.class).getBody();
+        Integer companyGstId = existing.getFiling().getCompanyGST().getId();
+        EinvoiceIrnDtlApiResponse resp;
+        try {
+            // EinvoiceIrnDtlApiResponse already models the {"data": {...}} wrapper itself
+            resp = client.rootAs(client.get(url, gstAuthService.headersFor(companyGstId)), EinvoiceIrnDtlApiResponse.class);
+        } catch (WhitebooksApiException e) {
+            throw gstAuthService.handleCallFailure(companyGstId, e);
+        }
 
         // EinvoiceSyncService.fetchAndStoreIrnDetail() — add one line
         if (resp != null && resp.getData() != null) {
@@ -122,8 +133,7 @@ public class EinvoiceSyncService {
                     .queryParam("ret_period", filing.getRetPeriod())
                     .toUriString();
 
-            EinvoiceHsnApiResponse resp = restTemplate.exchange(
-                    url, HttpMethod.GET, new HttpEntity<>(commonHeaders()), EinvoiceHsnApiResponse.class).getBody();
+            EinvoiceHsnApiResponse resp = fetch(url, companyGstId, EinvoiceHsnApiResponse.class);
 
             if (resp == null || resp.getHsn() == null) return 0;
 
@@ -131,8 +141,11 @@ public class EinvoiceSyncService {
             rows.addAll(mapHsnEntries(resp.getHsn().getHsnB2b(), filing, "B2B"));
             rows.addAll(mapHsnEntries(resp.getHsn().getHsnB2c(), filing, "B2C"));
             return hsnRepository.saveAll(rows).size();
-        } catch (ApiUsageLimitExceededException e) {
-            throw e; // hard block must surface, not be swallowed like other sync failures below
+        } catch (ApiUsageLimitExceededException | GstSessionRequiredException e) {
+            throw e; // must surface (limit hit / GST OTP needed), not be swallowed
+        } catch (WhitebooksApiException e) {
+            if (WhitebooksApiException.isNoData(e)) return 0;
+            throw e; // surface the GST portal's message instead of a silent 0-row "SYNCED"
         } catch (Exception e) {
             log.error("E-Invoice HSN sync failed: {}", e.getMessage());
             return 0;
@@ -165,8 +178,7 @@ public class EinvoiceSyncService {
                     .queryParam("rtnprd", filing.getRetPeriod())
                     .toUriString();
 
-            EinvoiceIrnListApiResponse resp = restTemplate.exchange(
-                    url, HttpMethod.GET, new HttpEntity<>(commonHeaders()), EinvoiceIrnListApiResponse.class).getBody();
+            EinvoiceIrnListApiResponse resp = fetch(url, companyGstId, EinvoiceIrnListApiResponse.class);
 
             if (resp == null || resp.getIrnList() == null) return 0;
 
@@ -198,23 +210,24 @@ public class EinvoiceSyncService {
                 }
             }
             return count;
-        } catch (ApiUsageLimitExceededException e) {
-            throw e; // hard block must surface, not be swallowed like other sync failures below
+        } catch (ApiUsageLimitExceededException | GstSessionRequiredException e) {
+            throw e; // must surface (limit hit / GST OTP needed), not be swallowed
+        } catch (WhitebooksApiException e) {
+            if (WhitebooksApiException.isNoData(e)) return 0;
+            throw e; // surface the GST portal's message instead of a silent 0-row "SYNCED"
         } catch (Exception e) {
             log.error("E-Invoice IRN list sync failed: {}", e.getMessage());
             return 0;
         }
     }
 
-    private HttpHeaders commonHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("gst_username", creds.getGstUsername());
-        headers.set("state_cd", creds.getStateCd());
-        headers.set("ip_address", creds.getIpAddress());
-        headers.set("txn", UUID.randomUUID().toString().replace("-", ""));
-        headers.set("client_id", creds.getClientId());
-        headers.set("client_secreat", creds.getClientSecret()); // matches the API's own typo, as in Gstr1SyncService
-        return headers;
+    /** GST-portal e-invoice APIs use the GST keys + the GSTIN's session txn, and wrap results in "data". */
+    private <T> T fetch(String url, Integer companyGstId, Class<T> type) {
+        try {
+            return client.getData(url, gstAuthService.headersFor(companyGstId), type);
+        } catch (WhitebooksApiException e) {
+            throw gstAuthService.handleCallFailure(companyGstId, e);
+        }
     }
 
     // EinvoiceSyncService.java — replace the existing createManual() method with this

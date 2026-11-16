@@ -27,6 +27,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    /** 428 (not 401) so the frontend opens the GST OTP dialog instead of logging the user out. */
+    @ExceptionHandler(com.gst_reconsilation.whitebooks.session.GstSessionRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGstSessionRequired(
+            com.gst_reconsilation.whitebooks.session.GstSessionRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(com.gst_reconsilation.whitebooks.WhitebooksApiException.class)
+    public ResponseEntity<ApiResponse<Void>> handleWhitebooks(com.gst_reconsilation.whitebooks.WhitebooksApiException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error("GST portal error: " + ex.getMessage()));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiResponse<Void>> handleRuntimeException(RuntimeException ex) {
         log.warn("Handled RuntimeException: {}", ex.getMessage(), ex);
